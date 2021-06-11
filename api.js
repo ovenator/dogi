@@ -50,8 +50,17 @@ exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
     const runLogFilename = path.join(instanceDir, 'dogi.run.log');
 
     const result = {
-        buildLogFilename,
-        runLogFilename
+        output: {
+            buildLog: buildLogFilename,
+            runLog: runLogFilename
+        }
+    }
+
+    if(action === 'peek') {
+        return {
+            ...result,
+            delayed: (pending[instanceId] && pending[instanceId].delayed) || new Promise(res => setTimeout(res, 1000))
+        };
     }
 
     const pendingInstance = pending[instanceId];
@@ -59,8 +68,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
     if(pendingInstance) {
         return {
             ...result,
-            started: false,
-            delayed: pendingInstance
+            delayed: pendingInstance.delayed
         }
     }
 
@@ -83,7 +91,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
         }
     }
 
-    const delayed = pending[instanceId] = build();
+    const {delayed} = pending[instanceId] = {delayed: build()};
     delayed
         .catch(e => {
             console.error(e);
