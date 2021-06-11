@@ -1046,6 +1046,11 @@ supports-color@^7.1.0:
   dependencies:
     has-flag "^4.0.0"
 
+tail-stream@^0.3.4:
+  version "0.3.4"
+  resolved "https://registry.yarnpkg.com/tail-stream/-/tail-stream-0.3.4.tgz#bc675a20e92732b1a6a7cc65d6be66f7817fd5c1"
+  integrity sha1-vGdaIOknMrGmp8xl1r5m94F/1cE=
+
 tar-fs@~2.0.1:
   version "2.0.1"
   resolved "https://registry.yarnpkg.com/tar-fs/-/tar-fs-2.0.1.tgz#e44086c1c60d31a4f0cf893b1c4e155dabfae9e2"

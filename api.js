@@ -1,7 +1,7 @@
 const path = require('path');
 const crypto = require('crypto');
-const fsp = require('fs').promises;
 const fs = require('fs');
+const fsp = fs.promises;
 const {nanoid} = require('nanoid');
 const debug = require('debug');
 
@@ -14,11 +14,11 @@ const git = simpleGit();
 
 exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) => {
     const dockerfile = _dockerfile || 'Dockerfile';
-    const instanceDir = path.join(__dirname, 'instances', instanceId);
-    await git.clone(sshUrl, instanceDir);
-    let buildFiles = await fsp.readdir(instanceDir);
+    const instanceRepoDir = path.join(__dirname, 'instances', instanceId, 'repo');
+    await git.clone(sshUrl, instanceRepoDir);
+    let buildFiles = await fsp.readdir(instanceRepoDir);
     const buildStream = await docker.buildImage({
-        context: instanceDir,
+        context: instanceRepoDir,
         src: buildFiles
     }, {t: instanceId, dockerfile});
 
@@ -41,35 +41,9 @@ function sha1(str) {
     return shasum.digest('hex');
 }
 
-async function acquireLock({instanceId}) {
-    const instanceLock = path.join(__dirname, 'locks', `${instanceId}.lock`);
-    const myId = nanoid();
-    try {
-        await fsp.readFile(instanceLock);
-    } catch (e) {
-        if(e.code === 'ENOENT') {
-            await fsp.writeFile(instanceLock, myId);
-        }
-    }
-
-    const lock = await fsp.readFile(instanceLock);
-    return lock.toString() === myId;
-}
-
-async function releaseLock({instanceId}) {
-    const instanceLock = path.join(__dirname, 'locks', `${instanceId}.lock`);
-    try {
-        await fsp.unlink(instanceLock);
-    } catch (e) {
-        if(e.code !== 'ENOENT') {
-            throw e;
-        }
-    }
-}
-
 const pending = {};
 
-exports.lifecycle = async ({sshUrl, dockerfile}) => {
+exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
     const instanceId = sha1(sshUrl);
     const instanceDir = path.join(__dirname, 'instances', instanceId);
     const buildLogFilename = path.join(instanceDir, 'dogi.build.log');
@@ -80,18 +54,22 @@ exports.lifecycle = async ({sshUrl, dockerfile}) => {
         runLogFilename
     }
 
-    const hasLock = await acquireLock({instanceId});
-    if(!hasLock) {
+    const pendingInstance = pending[instanceId];
+
+    if(pendingInstance) {
         return {
             ...result,
-            started: false
+            started: false,
+            delayed: pendingInstance
         }
     }
 
+    await fsp.rmdir(instanceDir, {recursive: true});
+    await fsp.mkdir(instanceDir, {recursive: true});
     await fsp.writeFile(buildLogFilename, '');
     await fsp.writeFile(runLogFilename, '');
 
-    try {
+    async function build() {
         const buildLog = fs.createWriteStream(buildLogFilename);
         await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
 
@@ -103,13 +81,21 @@ exports.lifecycle = async ({sshUrl, dockerfile}) => {
         if(StatusCode !== 0) {
             throw new Error('Execution failed with code', StatusCode);
         }
-    } finally {
-        await releaseLock({instanceId});
     }
+
+    const delayed = pending[instanceId] = build();
+    delayed
+        .catch(e => {
+            console.error(e);
+        })
+        .finally(() => {
+            delete pending[instanceId];
+        })
 
     return {
         ...result,
-        started: true
+        started: true,
+        delayed
     }
 
 }

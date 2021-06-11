@@ -1,7 +1,7 @@
 {
   "name": "dogi",
   "version": "1.0.0",
-  "main": "index2.js",
+  "main": "app.js",
   "license": "MIT",
   "dependencies": {
     "debug": "^4.3.1",
@@ -9,6 +9,7 @@
     "express": "^4.17.1",
     "nanoid": "^3.1.23",
     "simple-git": "^2.39.1",
+    "tail-stream": "^0.3.4",
     "tar": "^6.1.0"
   },
   "devDependencies": {

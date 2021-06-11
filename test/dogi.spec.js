@@ -1,11 +1,12 @@
 const should = require('should');
 const debug = require('debug');
-const fsp = require('fs').promises;
+const fs = require('fs');
+const fsp = fs.promises;
+const ts = require('tail-stream');
 
 debug.enable('simple-git,simple-git:*');
 
 const api = require('../api');
-
 
 
 describe('dogi', () => {
@@ -30,8 +31,15 @@ describe('dogi', () => {
         await api.run({instanceId: 'test', output: process.stdout});
     })
 
-    it('should lock', async function() {
-        await api.lifecycle({sshUrl, dockerfile});
+    it('should perform lifecycle', async function() {
+        this.timeout(hour);
+        const result = await api.lifecycle({sshUrl, dockerfile});
+        const {delayed} = result;
+        const buildLog = ts.createReadStream(result.buildLogFilename).pipe(process.stdout);
+        const runLog = ts.createReadStream(result.runLogFilename).pipe(process.stdout);
+        await delayed;
+        buildLog.end();
+        runLog.end();
         return;
     })
 });

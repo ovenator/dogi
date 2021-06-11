@@ -4,7 +4,7 @@
 Turn any GIT repository into HTTP callable endpoint
 
 ### Example
-https://dogi.run/ssh/github.com/ovenator/scrapy-amazon.git
+https://dogi.run/ssh/git@github.com/ovenator/scrapy-amazon.git
 
 
 
