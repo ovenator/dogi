@@ -9,10 +9,10 @@ const api = require('./api');
 app.get('/ssh/:url(*)', async (req, res) => {
     const {params, query} = req;
     const {url:sshUrl} = params;
-    const {df, iid, action} = query;
-    const dockerfile = df || 'Dockerfile.build';
+    const {df, iid, action, file, cmd} = query;
+    const dockerfile = df || 'Dockerfile';
 
-    const result = await api.lifecycle({sshUrl, dockerfile, action});
+    const result = await api.lifecycle({sshUrl, dockerfile, action, file, cmd});
     const {delayed, output} = result;
 
     res.setHeader("Content-Type", "text/plain");

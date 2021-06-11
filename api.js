@@ -29,8 +29,24 @@ exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) =>
     });
 }
 
-exports.run = async ({instanceId, output}) => {
-    const resultTuple = await docker.run(instanceId, null, output);
+exports.run = async ({instanceId, mount, cmd, output}) => {
+    let _cmd = null;
+    if (cmd) {
+        _cmd = ['bash', '-c', cmd];
+    }
+    let _createOptions = null;
+
+    if (mount) {
+        _createOptions = {
+            HostConfig: {
+                Binds: [
+                    `${mount.host}:${mount.container}`
+                ]
+            }
+        }
+    }
+
+    const resultTuple = await docker.run(instanceId, _cmd, output, _createOptions);
     const [result, container] = resultTuple;
     return {result, container};
 }
@@ -43,16 +59,18 @@ function sha1(str) {
 
 const pending = {};
 
-exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
+exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
     const instanceId = sha1(sshUrl);
     const instanceDir = path.join(__dirname, 'instances', instanceId);
     const buildLogFilename = path.join(instanceDir, 'dogi.build.log');
     const runLogFilename = path.join(instanceDir, 'dogi.run.log');
+    const outputFilename = path.join(instanceDir, 'dogi.file.log');
 
     const result = {
         output: {
             buildLog: buildLogFilename,
-            runLog: runLogFilename
+            runLog: runLogFilename,
+            file: outputFilename
         }
     }
 
@@ -74,15 +92,26 @@ exports.lifecycle = async ({sshUrl, dockerfile, action}) => {
 
     await fsp.rmdir(instanceDir, {recursive: true});
     await fsp.mkdir(instanceDir, {recursive: true});
+
     await fsp.writeFile(buildLogFilename, '');
     await fsp.writeFile(runLogFilename, '');
+
+    let mount = null;
+
+    if(file) {
+        await fsp.writeFile(outputFilename, '');
+        mount = {
+            container: file,
+            host: outputFilename
+        }
+    }
 
     async function build() {
         const buildLog = fs.createWriteStream(buildLogFilename);
         await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
 
         const runLog = fs.createWriteStream(runLogFilename);
-        const {result, container} = await exports.run({instanceId, output: runLog});
+        const {result, container} = await exports.run({instanceId, mount, cmd, output: runLog});
         const {StatusCode} = result;
         await container.remove({force: true});
 
