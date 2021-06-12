@@ -10,9 +10,10 @@ http://localhost:3001/ssh/git@github.com:ovenator/estates.git?output=buildLog&fi
 http://localhost:3001/ssh/git@github.com:ovenator/estates.git?action=peek&output=runLog
 http://localhost:3001/ssh/git@github.com:ovenator/estates.git?action=peek&output=file
 
+
 ### Installation
 ```shell
-docker run -p 80:80 -d ovenator/dogi
+ docker run -ti -p 3001:3001 -v  /var/run/docker.sock:/var/run/docker.sock -e BYPASS_SIGNATURES=true --rm dogi-test 
 ```
 ### Query Params
 

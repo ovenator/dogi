@@ -10,9 +10,9 @@ const port = 3001
 const api = require('./api');
 const {verify} = require('./crypto');
 
-app.get('/ssh/:url(*)', wrap(async (req, res) => {
+app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     const {params, query} = req;
-    const {url:sshUrl} = params;
+    const {url:sshUrl, protocol} = params;
     const {df, iid, file, cmd} = query;
     const dockerfile = df || 'Dockerfile';
 
@@ -24,6 +24,7 @@ app.get('/ssh/:url(*)', wrap(async (req, res) => {
     const queryAction = query.action || 'run';
     const queryOutput = query.output || 'buildLog'
 
+    validate('protocol', ['ssh', 'http'], protocol)
     validate('action', ['peek', 'run'], queryAction)
     validate('output', ['file', 'buildLog', 'runLog'], queryOutput)
 
