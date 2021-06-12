@@ -6,7 +6,9 @@ Turn any GIT repository into HTTP callable endpoint
 ### Example
 https://dogi.run/ssh/git@github.com/ovenator/scrapy-amazon.git
 
-`http://localhost:3001/ssh/git@github.com:ovenator/estates.git?action=peek&output=file&file=/app/data.jsonl&cmd=pipenv run scrapy`
+http://localhost:3001/ssh/git@github.com:ovenator/estates.git?output=buildLog&file=/app/data.jsonl&cmd=pipenv run scrapy
+http://localhost:3001/ssh/git@github.com:ovenator/estates.git?action=peek&output=runLog
+http://localhost:3001/ssh/git@github.com:ovenator/estates.git?action=peek&output=file
 
 ### Installation
 ```shell

@@ -77,7 +77,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
     if(action === 'peek') {
         return {
             ...result,
-            delayed: (pending[instanceId] && pending[instanceId].delayed) || new Promise(res => setTimeout(res, 1000))
+            delayed: (pending[instanceId] && pending[instanceId].delayed) || null
         };
     }
 
@@ -95,11 +95,11 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
 
     await fsp.writeFile(buildLogFilename, '');
     await fsp.writeFile(runLogFilename, '');
+    await fsp.writeFile(outputFilename, '');
 
     let mount = null;
 
     if(file) {
-        await fsp.writeFile(outputFilename, '');
         mount = {
             container: file,
             host: outputFilename
