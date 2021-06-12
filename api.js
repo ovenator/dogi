@@ -1,8 +1,6 @@
 const path = require('path');
-const crypto = require('crypto');
 const fs = require('fs');
 const fsp = fs.promises;
-const {nanoid} = require('nanoid');
 const debug = require('debug');
 
 var Docker = require('dockerode');
@@ -10,6 +8,8 @@ var docker = new Docker({socketPath: '/var/run/docker.sock'});
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
+
+const {sha1} = require('./crypto');
 
 
 exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) => {
@@ -49,12 +49,6 @@ exports.run = async ({instanceId, mount, cmd, output}) => {
     const resultTuple = await docker.run(instanceId, _cmd, output, _createOptions);
     const [result, container] = resultTuple;
     return {result, container};
-}
-
-function sha1(str) {
-    const shasum = crypto.createHash('sha1');
-    shasum.update(str);
-    return shasum.digest('hex');
 }
 
 const pending = {};

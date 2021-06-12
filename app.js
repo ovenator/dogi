@@ -8,12 +8,18 @@ const app = express()
 const port = 3001
 
 const api = require('./api');
+const {verify} = require('./crypto');
 
 app.get('/ssh/:url(*)', wrap(async (req, res) => {
     const {params, query} = req;
     const {url:sshUrl} = params;
     const {df, iid, file, cmd} = query;
     const dockerfile = df || 'Dockerfile';
+
+    if(!verify(req.url)) {
+        res.send('Signature verification failed.');
+        return;
+    }
 
     const queryAction = query.action || 'run';
     const queryOutput = query.output || 'buildLog'
