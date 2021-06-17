@@ -14,7 +14,7 @@ const {sha1} = require('./crypto');
 
 exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) => {
     const dockerfile = _dockerfile || 'Dockerfile';
-    const instanceRepoDir = path.join(__dirname, 'instances', instanceId, 'repo');
+    const instanceRepoDir = path.join(getInternalSharedDir(instanceId), 'repo');
     await git.clone(sshUrl, instanceRepoDir);
     let buildFiles = await fsp.readdir(instanceRepoDir);
     const buildStream = await docker.buildImage({
@@ -29,10 +29,10 @@ exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) =>
     });
 }
 
-exports.run = async ({instanceId, mount, cmd, output}) => {
+exports.run = async ({instanceId, mount, cmd, bashc, output}) => {
     let _cmd = null;
-    if (cmd) {
-        _cmd = ['bash', '-c', cmd];
+    if (bashc) {
+        _cmd = ['bash', '-c', bashc];
     }
     let _createOptions = null;
 
@@ -53,18 +53,17 @@ exports.run = async ({instanceId, mount, cmd, output}) => {
 
 const pending = {};
 
-exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
+exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
     const instanceId = sha1(sshUrl);
-    const instanceDir = path.join(__dirname, 'instances', instanceId);
-    const buildLogFilename = path.join(instanceDir, 'dogi.build.log');
-    const runLogFilename = path.join(instanceDir, 'dogi.run.log');
-    const outputFilename = path.join(instanceDir, 'dogi.file.log');
+    const instanceDir = getInternalSharedDir(instanceId);
+    const logFilename = path.join(instanceDir, 'dogi.log');
+    const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file.log');
+    const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
 
     const result = {
         output: {
-            buildLog: buildLogFilename,
-            runLog: runLogFilename,
-            file: outputFilename
+            log: logFilename,
+            file: outputFilenameInternal
         }
     }
 
@@ -87,25 +86,24 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
     await fsp.rmdir(instanceDir, {recursive: true});
     await fsp.mkdir(instanceDir, {recursive: true});
 
-    await fsp.writeFile(buildLogFilename, '');
-    await fsp.writeFile(runLogFilename, '');
-    await fsp.writeFile(outputFilename, '');
+    await fsp.writeFile(logFilename, '');
+    await fsp.writeFile(outputFilenameInternal, '');
 
     let mount = null;
 
     if(file) {
         mount = {
             container: file,
-            host: outputFilename
+            host: outputFilenameExternal
         }
     }
 
     async function build() {
-        const buildLog = fs.createWriteStream(buildLogFilename);
+        const buildLog = fs.createWriteStream(logFilename);
         await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
 
-        const runLog = fs.createWriteStream(runLogFilename);
-        const {result, container} = await exports.run({instanceId, mount, cmd, output: runLog});
+        const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
+        const {result, container} = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
         const {StatusCode} = result;
         await container.remove({force: true});
 
@@ -129,4 +127,17 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd}) => {
         delayed
     }
 
+}
+
+//this necessary workaround until https://github.com/moby/moby/issues/32582 is implemented
+const internalSharedDir = '/tmp/dogi-shared/instances';
+fs.mkdirSync(internalSharedDir, {recursive: true});
+
+function getInternalSharedDir(instanceId) {
+    return path.join(internalSharedDir, instanceId)
+}
+
+const externalSharedDir = path.join(process.env['HOST_SHARED_DIR'] || '/tmp', 'dogi-shared/instances');
+function getExternalSharedDir(instanceId) {
+    return path.join(externalSharedDir, instanceId);
 }
