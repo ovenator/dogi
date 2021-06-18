@@ -69,6 +69,10 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     res.end()
 }))
 
+app.get('/jobs', wrap(async (req, res) => {
+    res.json(api.getRunningJobs());
+}))
+
 function validate(param, allowed, actual) {
     if (!allowed.includes(actual)) {
         throw new Error(`Invalid value '${actual}' of '${param}', allowed values are ${JSON.stringify(allowed)}`)

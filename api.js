@@ -53,6 +53,8 @@ exports.run = async ({instanceId, mount, cmd, bashc, output}) => {
 
 const pending = {};
 
+exports.getRunningJobs = () => pending;
+
 exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
     const instanceId = sha1(sshUrl);
     const instanceDir = getInternalSharedDir(instanceId);
@@ -98,6 +100,8 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
         }
     }
 
+    const jobData = {url: sshUrl, started: Date.now()}
+
     async function build() {
         const buildLog = fs.createWriteStream(logFilename);
         await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
@@ -112,7 +116,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
         }
     }
 
-    const {delayed} = pending[instanceId] = {delayed: build()};
+    const {delayed} = pending[instanceId] = {delayed: build(), jobData};
     delayed
         .catch(e => {
             console.error(e);
