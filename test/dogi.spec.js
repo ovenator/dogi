@@ -4,8 +4,9 @@ const fs = require('fs');
 const fsp = fs.promises;
 const ts = require('tail-stream');
 
-debug.enable('simple-git,simple-git:*');
+debug.enable('*');
 
+const docker = require('../docker');
 const api = require('../api');
 const {verifyInternal, sha1} = require("../crypto");
 
@@ -33,13 +34,13 @@ describe('dogi', () => {
 
     it('should perform lifecycle', async function() {
         this.timeout(hour);
-        const result = await api.lifecycle({sshUrl, dockerfile});
-        const {delayed} = result;
-        const buildLog = ts.createReadStream(result.buildLogFilename).pipe(process.stdout);
-        const runLog = ts.createReadStream(result.runLogFilename).pipe(process.stdout);
+        const result = await api.lifecycle({sshUrl: 'git@github.com:ovenator/estates.git', bashc: 'pipenv run scrapy'});
+        const {delayed, instanceId} = result;
+        const buildLog = ts.createReadStream(result.output['log']).pipe(process.stdout);
+        // let container = docker.getContainer(instanceId);
+        // let info = await container.inspect();
         await delayed;
         buildLog.end();
-        runLog.end();
         return;
     })
 

@@ -3,8 +3,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const debug = require('debug');
 
-var Docker = require('dockerode');
-var docker = new Docker({socketPath: '/var/run/docker.sock'});
+const docker = require('./docker')
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
@@ -29,7 +28,7 @@ exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) =>
     });
 }
 
-exports.run = async ({instanceId, mount, cmd, bashc, output}) => {
+exports.runOld = async ({instanceId, mount, cmd, bashc, output}) => {
     let _cmd = null;
     if (bashc) {
         _cmd = ['bash', '-c', bashc];
@@ -51,9 +50,106 @@ exports.run = async ({instanceId, mount, cmd, bashc, output}) => {
     return {result, container};
 }
 
-const pending = {};
+exports.run = async function({instanceId, bashc, mount, output}) {
 
-exports.getRunningJobs = () => pending;
+    const image = instanceId;
+
+    let cmd = null;
+
+    if (bashc) {
+        cmd = ['bash', '-c', bashc];
+    }
+
+    let createOptions = {
+        'Hostname': '',
+        'User': '',
+        'AttachStdin': false,
+        'AttachStdout': true,
+        'AttachStderr': true,
+        'Tty': true,
+        'OpenStdin': false,
+        'StdinOnce': false,
+        'Env': null,
+        'Cmd': cmd,
+        'Image': image,
+        'Volumes': {},
+        'VolumesFrom': []
+    };
+
+    if (mount) {
+        const HostConfig = {
+            Binds: [
+                `${mount.host}:${mount.container}`
+            ]
+        };
+
+        createOptions = {
+            ...createOptions,
+            HostConfig
+        }
+    }
+
+    const containerCreated = openPromise();
+    const containerFinished = openPromise();
+
+    async function abort() {
+        const container = await containerCreated;
+        await container.remove({force: true});
+    }
+
+    async function start() {
+        const container = await docker.createContainer(createOptions);
+        containerCreated.resolve(container);
+
+        try {
+            const stream = await container.attach({
+                stream: true,
+                stdout: true,
+                stderr: true
+            });
+
+            stream.setEncoding('utf8');
+            stream.pipe(output, {
+                end: true
+            });
+
+            await container.start({});
+
+            const result = await container.wait();
+            containerFinished.resolve(result);
+
+            return {result, container};
+        } catch (e) {
+            throw e;
+        } finally {
+            await container.remove({force: true});
+        }
+
+    }
+
+    start()
+        .catch((e) => {
+            containerCreated.reject(e);
+            containerFinished.reject(e);
+        });
+
+    return {containerCreated, containerFinished, abort}
+
+};
+
+function openPromise() {
+    let resolve, reject;
+    const p = new Promise((res, rej) => {
+        [resolve, reject] = [res, rej];
+    })
+    p.resolve = resolve;
+    p.reject = reject;
+    return p;
+}
+
+const instancesById = {};
+
+exports.getRunningJobs = () => instancesById;
 
 exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
     const instanceId = sha1(sshUrl);
@@ -62,26 +158,31 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
     const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file.log');
     const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
 
-    const result = {
-        output: {
-            log: logFilename,
-            file: outputFilenameInternal
-        }
+    let currentInstance = instancesById[instanceId];
+
+    if(currentInstance) {
+        return currentInstance;
     }
 
-    if(action === 'peek') {
-        return {
-            ...result,
-            delayed: (pending[instanceId] && pending[instanceId].delayed) || null
+    if (action === 'peek') {
+        throw new Error('No existing jobs for', sshUrl);
+    }
+
+    if(!currentInstance) {
+        currentInstance = instancesById[instanceId] = {
+            instanceId,
+            started: Date.now(),
+            url: sshUrl,
+            pendingRun: openPromise(),
+            delayed: null,
+            output: {
+                log: logFilename
+            }
         };
-    }
 
-    const pendingInstance = pending[instanceId];
-
-    if(pendingInstance) {
-        return {
-            ...result,
-            delayed: pendingInstance.delayed
+        if (file) {
+            currentInstance.file = file;
+            currentInstance.output.file = outputFilenameInternal;
         }
     }
 
@@ -100,36 +201,36 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
         }
     }
 
-    const jobData = {url: sshUrl, started: Date.now()}
-
-    async function build() {
+    async function buildAndRun() {
         const buildLog = fs.createWriteStream(logFilename);
         await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
 
         const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
-        const {result, container} = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
+
+        const pendingRun = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
+
+        currentInstance.pendingRun.resolve(pendingRun);
+        const result = await pendingRun.containerFinished;
         const {StatusCode} = result;
-        await container.remove({force: true});
 
         if(StatusCode !== 0) {
             throw new Error('Execution failed with code', StatusCode);
         }
     }
 
-    const {delayed} = pending[instanceId] = {delayed: build(), jobData};
+    const delayed = buildAndRun();
+
+    currentInstance.delayed = delayed;
+
     delayed
         .catch(e => {
             console.error(e);
         })
         .finally(() => {
-            delete pending[instanceId];
+            delete instancesById[instanceId];
         })
 
-    return {
-        ...result,
-        started: true,
-        delayed
-    }
+    return currentInstance;
 
 }
 
