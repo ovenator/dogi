@@ -4,6 +4,7 @@ const fsp = fs.promises;
 const debug = require('debug');
 
 const docker = require('./docker')
+const {openPromise} = require('./util');
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
@@ -136,16 +137,6 @@ exports.run = async function({instanceId, bashc, mount, output}) {
     return {containerCreated, containerFinished, abort}
 
 };
-
-function openPromise() {
-    let resolve, reject;
-    const p = new Promise((res, rej) => {
-        [resolve, reject] = [res, rej];
-    })
-    p.resolve = resolve;
-    p.reject = reject;
-    return p;
-}
 
 const instancesById = {};
 

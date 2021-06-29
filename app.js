@@ -22,17 +22,23 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
         return;
     }
 
-    const queryAction = query.action || 'run';
-    const queryOutput = query.output || 'buildLog'
+    const queryAction = query.action || 'peek';
+    const queryOutput = query.output || query.file ? 'file' : 'log';
 
     validate('protocol', ['ssh', 'http'], protocol)
-    validate('action', ['peek', 'run'], queryAction)
-    validate('output', ['file', 'log'], queryOutput)
+    validate('action', ['peek', 'run', 'abort', 'restart'], queryAction)
+    validate('output', ['file', 'log', 'status'], queryOutput)
 
     debug('starting lifecycle');
     const result = await api.lifecycle({sshUrl, dockerfile, action: queryAction, file, cmd, bashc});
     const {delayed, output} = result;
     debug('finished lifecycle')
+
+    if (queryOutput === 'status') {
+        await delayed;
+        res.end('Job finished');
+        return;
+    }
 
     res.setHeader("Connection", "Keep-Alive");
     res.setHeader("Keep-Alive", "timeout=86400, max=1000");
