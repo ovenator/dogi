@@ -153,27 +153,70 @@ exports.getRunningJobs = () => instancesById;
 
 exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
     const instanceId = sha1(sshUrl);
-    const instanceDir = getInternalSharedDir(instanceId);
-    const logFilename = path.join(instanceDir, 'dogi.log');
-    const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file.log');
-    const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
-
-    let currentInstance = instancesById[instanceId];
+    const currentInstance = instancesById[instanceId];
 
     if(currentInstance) {
-        return currentInstance;
+        return withInstance(currentInstance);
     }
 
-    if (action === 'peek') {
-        throw new Error('No existing jobs for', sshUrl);
+    return withoutInstance();
+
+    async function withInstance(instance) {
+
+        if (action === 'restart') {
+            const {pendingRestart} = instance;
+            if (pendingRestart) {
+                pendingRestart.reject(new Error('Killed by subsequent restart'));
+            }
+
+            instance.pendingRestart = openPromise();
+
+            const pendingRun = await Promise.race([instance.pendingRun, instance.pendingRestart]);
+            await pendingRun.abort();
+            return withoutInstance();
+        }
+
+        if (action === 'abort') {
+            const pendingRun = await instance.pendingRun;
+            await pendingRun.abort();
+        }
+
+        return instance;
     }
 
-    if(!currentInstance) {
-        currentInstance = instancesById[instanceId] = {
+    async function withoutInstance() {
+        const instanceDir = getInternalSharedDir(instanceId);
+        const logFilename = path.join(instanceDir, 'dogi.log');
+        const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file.log');
+        const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
+
+        if (action === 'peek') {
+            fsp.access(logFilename);
+
+            const output =  {
+                log: logFilename,
+            };
+
+            try {
+                fsp.access(outputFilenameInternal);
+                output.file = outputFilenameInternal;
+            } catch (e) {
+                debug('output file', outputFilenameInternal, 'is not available');
+            }
+
+            return {output}
+        }
+
+        if (action === 'abort') {
+            throw new Error(`[abort] No existing jobs for ${sshUrl}`);
+        }
+
+        const newInstance = instancesById[instanceId] = {
             instanceId,
             started: Date.now(),
             url: sshUrl,
             pendingRun: openPromise(),
+            pendingRestart: null,
             delayed: null,
             output: {
                 log: logFilename
@@ -181,57 +224,56 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
         };
 
         if (file) {
-            currentInstance.file = file;
-            currentInstance.output.file = outputFilenameInternal;
+            newInstance.file = file;
+            newInstance.output.file = outputFilenameInternal;
         }
-    }
 
-    await fsp.rmdir(instanceDir, {recursive: true});
-    await fsp.mkdir(instanceDir, {recursive: true});
+        await fsp.rmdir(instanceDir, {recursive: true});
+        await fsp.mkdir(instanceDir, {recursive: true});
 
-    await fsp.writeFile(logFilename, '');
-    await fsp.writeFile(outputFilenameInternal, '');
+        await fsp.writeFile(logFilename, '');
+        await fsp.writeFile(outputFilenameInternal, '');
 
-    let mount = null;
+        let mount = null;
 
-    if(file) {
-        mount = {
-            container: file,
-            host: outputFilenameExternal
+        if(file) {
+            mount = {
+                container: file,
+                host: outputFilenameExternal
+            }
         }
-    }
 
-    async function buildAndRun() {
-        const buildLog = fs.createWriteStream(logFilename);
-        await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
+        async function buildAndRun() {
+            const buildLog = fs.createWriteStream(logFilename);
+            await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
 
-        const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
+            const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
-        const pendingRun = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
+            const pendingRun = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
 
-        currentInstance.pendingRun.resolve(pendingRun);
-        const result = await pendingRun.containerFinished;
-        const {StatusCode} = result;
+            newInstance.pendingRun.resolve(pendingRun);
+            const result = await pendingRun.containerFinished;
+            const {StatusCode} = result;
 
-        if(StatusCode !== 0) {
-            throw new Error('Execution failed with code', StatusCode);
+            if(StatusCode !== 0) {
+                throw new Error('Execution failed with code', StatusCode);
+            }
         }
+
+        const delayed = buildAndRun();
+
+        newInstance.delayed = delayed;
+
+        delayed
+            .catch(e => {
+                console.error(e);
+            })
+            .finally(() => {
+                delete instancesById[instanceId];
+            })
+
+        return newInstance;
     }
-
-    const delayed = buildAndRun();
-
-    currentInstance.delayed = delayed;
-
-    delayed
-        .catch(e => {
-            console.error(e);
-        })
-        .finally(() => {
-            delete instancesById[instanceId];
-        })
-
-    return currentInstance;
-
 }
 
 //this necessary workaround until https://github.com/moby/moby/issues/32582 is implemented
