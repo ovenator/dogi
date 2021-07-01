@@ -4,7 +4,7 @@ const path = require('path');
 
 async function main() {
     console.log('printing env into env.json');
-    await fsp.writeFile(path.join(__dirname, 'env.json'), JSON.stringify(process.env));
+    await fsp.writeFile(path.join(__dirname, 'out', 'env.json'), JSON.stringify(process.env));
 }
 
 main()

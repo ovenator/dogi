@@ -103,6 +103,13 @@ describe('dogi', () => {
         fileString.split('\n').length.should.equal(202);
     })
 
+    it('should pass env var', async function() {
+        this.timeout(hour);
+        const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/dogi.git', bashc: 'node ./mock/env.js', file: '/app/data.jsonl'});
+
+
+    })
+
     it('should peek on finished', async function() {
         this.timeout(hour);
         const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/estates.git', bashc: 'pipenv run scrapy', file: '/app/data.jsonl'});
