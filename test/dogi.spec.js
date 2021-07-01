@@ -105,9 +105,22 @@ describe('dogi', () => {
 
     it('should pass env var', async function() {
         this.timeout(hour);
-        const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/dogi.git', bashc: 'node ./mock/env.js', file: '/app/data.jsonl'});
+        const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/dogi.git', bashc: 'node ./mock/env.js', file: '/app/mock/out/env.json'});
+        const runLogStream =  ts.createReadStream(runInstance.output['log']);
+        const runFileStream = ts.createReadStream(runInstance.output['file']);
 
+        runLogStream.pipe(process.stdout)
+        runFileStream.pipe(process.stdout)
 
+        const runFileStringPromise = streamToString(runFileStream);
+
+        await runInstance.delayed;
+        await wait(1000);
+
+        runFileStream.end();
+
+        let runFileString = await runFileStringPromise;
+        return;
     })
 
     it('should peek on finished', async function() {

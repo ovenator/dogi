@@ -14,7 +14,8 @@
     "tar": "^6.1.0"
   },
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "mock-env": "node mock/env.js"
   },
   "devDependencies": {
     "mocha": "^9.0.0",
