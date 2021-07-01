@@ -182,14 +182,14 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
         const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
 
         if (action === 'peek') {
-            fsp.access(logFilename);
+            await fsp.access(logFilename);
 
             const output =  {
                 log: logFilename,
             };
 
             try {
-                fsp.access(outputFilenameInternal);
+                await fsp.access(outputFilenameInternal);
                 output.file = outputFilenameInternal;
             } catch (e) {
                 debug('output file', outputFilenameInternal, 'is not available');
