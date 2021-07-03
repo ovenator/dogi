@@ -36,3 +36,17 @@ exports.createLock = function(maxRunning, maxPending) {
         }
     }
 }
+
+exports.extractEnvs = function extractEnvs(prefix, obj) {
+    const res = {};
+    if (obj) {
+        for (const [key, value] of Object.entries(obj)) {
+            // if (/^env_/i.test(key)) {
+            if ((new RegExp(`^${prefix}_`, 'i')).test(key)) {
+                res[key.substr(prefix.length + 1)] = value;
+            }
+        }
+    }
+
+    return res;
+}

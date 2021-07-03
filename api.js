@@ -51,14 +51,23 @@ exports.runOld = async ({instanceId, mount, cmd, bashc, output}) => {
     return {result, container};
 }
 
-exports.run = async function({instanceId, bashc, mount, output}) {
+exports.run = async function({instanceId, bashc, cmd, mount, env, output}) {
 
     const image = instanceId;
 
-    let cmd = null;
+    let _cmd = null;
 
-    if (bashc) {
-        cmd = ['bash', '-c', bashc];
+    if (cmd) {
+        _cmd = cmd
+    } else if (bashc) {
+        _cmd = ['bash', '-c', bashc];
+    }
+
+    const envArr = [];
+    if (env) {
+        for (const kv of Object.entries(env)) {
+            envArr.push(kv.join('='));
+        }
     }
 
     let createOptions = {
@@ -70,8 +79,8 @@ exports.run = async function({instanceId, bashc, mount, output}) {
         'Tty': true,
         'OpenStdin': false,
         'StdinOnce': false,
-        'Env': null,
-        'Cmd': cmd,
+        'Env': envArr,
+        'Cmd': _cmd,
         'Image': image,
         'Volumes': {},
         'VolumesFrom': []
@@ -142,8 +151,13 @@ const instancesById = {};
 
 exports.getRunningJobs = () => instancesById;
 
-exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
-    const instanceId = sha1(sshUrl);
+exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, cmd, env, bashc}) => {
+    let instanceId = `dogi_${sha1(sshUrl)}`;
+    if(instanceIdSuffix) {
+        instanceId = `${instanceId}_${sha(instanceIdSuffix)}`;
+    }
+
+
     const currentInstance = instancesById[instanceId];
 
     if(currentInstance) {
@@ -240,7 +254,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
 
             const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
-            const pendingRun = await exports.run({instanceId, mount, cmd, bashc, output: runLog});
+            const pendingRun = await exports.run({instanceId, mount, cmd, bashc, env, output: runLog});
 
             newInstance.pendingRun.resolve(pendingRun);
             const result = await pendingRun.containerFinished;
@@ -270,7 +284,7 @@ exports.lifecycle = async ({sshUrl, dockerfile, action, file, cmd, bashc}) => {
 //this necessary workaround until https://github.com/moby/moby/issues/32582 is implemented
 const internalSharedDir = '/tmp/dogi-shared/instances';
 fs.mkdirSync(internalSharedDir, {recursive: true});
-
+exports.getInternalSharedDir = getInternalSharedDir;
 function getInternalSharedDir(instanceId) {
     return path.join(internalSharedDir, instanceId)
 }

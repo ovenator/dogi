@@ -8,41 +8,40 @@ debug.enable('*');
 
 const docker = require('../docker');
 const api = require('../api');
+const {extractEnvs} = require("../util");
 const {verifyInternal, sha1} = require("../crypto");
 
 describe('dogi', () => {
     const hour = 60 * 60 * 1000;
     beforeEach(async () => {
-        await fsp.rmdir(__dirname + '/../instances/test', {recursive: true})
+        await fsp.rmdir(api.getInternalSharedDir(''), {recursive: true})
     })
 
-    const sshUrl = 'git@github.com:docker-library/hello-world.git'
-    const dockerfile = 'Dockerfile.build';
 
-    it('should build', async function() {
-        this.timeout(hour);
+    // it('should build', async function() {
+    //     this.timeout(hour);
+    //
+    //     await api.build({
+    //         instanceId: 'test',
+    //         sshUrl: 'git@github.com:docker-library/hello-world.git',
+    //         dockerfile: 'Dockerfile.build',
+    //         output: process.stdout
+    //     });
+    //
+    //     await api.run({instanceId: 'test', output: process.stdout});
+    // })
 
-        await api.build({
-            instanceId: 'test',
-            sshUrl: 'git@github.com:docker-library/hello-world.git',
-            dockerfile: 'Dockerfile.build',
-            output: process.stdout
-        });
-
-        await api.run({instanceId: 'test', output: process.stdout});
-    })
-
-    it('should perform lifecycle', async function() {
-        this.timeout(hour);
-        const result = await api.lifecycle({sshUrl: 'git@github.com:ovenator/estates.git', bashc: 'pipenv run scrapy'});
-        const {delayed, instanceId} = result;
-        const buildLog = ts.createReadStream(result.output['log']).pipe(process.stdout);
-        // let container = docker.getContainer(instanceId);
-        // let info = await container.inspect();
-        await delayed;
-        buildLog.end();
-        return;
-    })
+    // it('should perform lifecycle', async function() {
+    //     this.timeout(hour);
+    //     const result = await api.lifecycle({sshUrl: 'git@github.com:ovenator/estates.git', bashc: 'pipenv run scrapy'});
+    //     const {delayed, instanceId} = result;
+    //     const buildLog = ts.createReadStream(result.output['log']).pipe(process.stdout);
+    //     // let container = docker.getContainer(instanceId);
+    //     // let info = await container.inspect();
+    //     await delayed;
+    //     buildLog.end();
+    //     return;
+    // })
 
     it('should throw when restarted', async function() {
         this.timeout(hour);
@@ -105,7 +104,7 @@ describe('dogi', () => {
 
     it('should pass env var', async function() {
         this.timeout(hour);
-        const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/dogi.git', bashc: 'node ./mock/env.js', file: '/app/mock/out/env.json'});
+        const runInstance = await api.lifecycle({sshUrl: 'git@github.com:ovenator/dogi.git', cmd: 'npm run mock-env'.split(' '), file: '/app/mock/out/env.json', env: {foo: 'bar'}});
         const runLogStream =  ts.createReadStream(runInstance.output['log']);
         const runFileStream = ts.createReadStream(runInstance.output['file']);
 
@@ -120,7 +119,22 @@ describe('dogi', () => {
         runFileStream.end();
 
         let runFileString = await runFileStringPromise;
+        let env = JSON.parse(runFileString);
+        should(env.foo).eql('bar');
         return;
+    })
+
+    it('should extract prefixed params', async function() {
+        const query = {
+            foo1: 'foo1',
+            foo2_env_foo: 'foo2',
+            Env_foo3: 'foo3',
+            env_foo4: 'foo4',
+            foo5: 'foo5',
+        }
+
+        extractEnvs('env', query).should.eql({foo3: 'foo3', foo4: 'foo4'});
+        extractEnvs('foo2', query).should.eql({env_foo: 'foo2'});
     })
 
     it('should peek on finished', async function() {

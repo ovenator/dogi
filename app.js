@@ -9,12 +9,13 @@ const app = express()
 const port = 3001
 
 const api = require('./api');
+const {extractEnvs} = require("./util");
 const {verify} = require('./crypto');
 
 app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     const {params, query} = req;
     const {url:sshUrl, protocol} = params;
-    const {df, iid, file, cmd, bashc} = query;
+    const {df, id, file, cmd, bashc} = query;
     const dockerfile = df || 'Dockerfile';
 
     if(!verify(req.url)) {
@@ -30,7 +31,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     validate('output', ['file', 'log', 'status'], queryOutput)
 
     debug('starting lifecycle');
-    const result = await api.lifecycle({sshUrl, dockerfile, action: queryAction, file, cmd, bashc});
+    const result = await api.lifecycle({instanceIdSuffix: id, sshUrl, dockerfile, action: queryAction, file, cmd, bashc, env: extractEnvs('env', query)});
     const {delayed, output} = result;
     debug('finished lifecycle')
 
