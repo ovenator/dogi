@@ -12,5 +12,10 @@
 
 ### Installation
 ```shell
- docker run -ti -p 3001:3001 -v /tmp:/tmp -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro -v /var/run/docker.sock:/var/run/docker.sock -e BYPASS_SIGNATURES=true --rm dogi-test 
+ docker run -ti 
+ -p 3001:3001 \
+ -v /tmp:/tmp \
+ -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro \
+ -v /var/run/docker.sock:/var/run/docker.sock \
+ -e BYPASS_SIGNATURES=true --rm ovenator/dogi:latest
 ```

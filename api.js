@@ -157,7 +157,6 @@ exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, 
         instanceId = `${instanceId}_${sha(instanceIdSuffix)}`;
     }
 
-
     const currentInstance = instancesById[instanceId];
 
     if(currentInstance) {

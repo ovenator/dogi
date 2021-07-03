@@ -24,7 +24,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     }
 
     const queryAction = query.action || 'peek';
-    const queryOutput = query.output || query.file ? 'file' : 'log';
+    const queryOutput = query.output || (query.file ? 'file' : 'log');
 
     validate('protocol', ['ssh', 'http'], protocol)
     validate('action', ['peek', 'run', 'abort', 'restart'], queryAction)
