@@ -1,4 +1,4 @@
-
+const {sha1} = require('./crypto');
 
 exports.openPromise = function() {
     let resolve, reject;
@@ -49,4 +49,16 @@ exports.extractEnvs = function extractEnvs(prefix, obj) {
     }
 
     return res;
+}
+
+exports.toInstanceId = ({repoName, customId}) => {
+    let instanceId = `dogi_${sha1(repoName)}`;
+    if(customId) {
+        instanceId = `${instanceId}_${sha(customId)}`;
+    }
+    return instanceId
+}
+
+exports.wait = function wait(ms) {
+    return new Promise(res => setTimeout(res, ms));
 }

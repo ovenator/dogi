@@ -2,9 +2,11 @@ const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 const debug = require('debug');
+const axios = require('axios');
+const {pick} = require('lodash')
 
 const docker = require('./docker')
-const {openPromise} = require('./util');
+const {openPromise, toInstanceId} = require('./util');
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
@@ -151,11 +153,10 @@ const instancesById = {};
 
 exports.getRunningJobs = () => instancesById;
 
-exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, cmd, env, bashc}) => {
-    let instanceId = `dogi_${sha1(sshUrl)}`;
-    if(instanceIdSuffix) {
-        instanceId = `${instanceId}_${sha(instanceIdSuffix)}`;
-    }
+
+
+exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, cmd, env, bashc, callbackUrl}) => {
+    let instanceId = toInstanceId({repoName: sshUrl, customId: instanceIdSuffix})
 
     const currentInstance = instancesById[instanceId];
 
@@ -191,8 +192,8 @@ exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, 
     async function withoutInstance() {
         const instanceDir = getInternalSharedDir(instanceId);
         const logFilename = path.join(instanceDir, 'dogi.log');
-        const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file.log');
-        const outputFilenameInternal = path.join(instanceDir, 'dogi.file.log');
+        const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file');
+        const outputFilenameInternal = path.join(instanceDir, 'dogi.file');
 
         if (action === 'peek') {
             await fsp.access(logFilename);
@@ -262,6 +263,18 @@ exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, 
             if(StatusCode !== 0) {
                 throw new Error('Execution failed with code', StatusCode);
             }
+
+            if (callbackUrl) {
+                const advertisedUrl = process.env['ADVERTISED_URL'] || 'http://localhost';
+                await axios.post(callbackUrl, {
+                    env,
+                    output: {
+                        log:  `${advertisedUrl}/output/${instanceId}/log`,
+                        file: `${advertisedUrl}/output/${instanceId}/file`
+                    }
+                });
+            }
+
         }
 
         const delayed = buildAndRun();

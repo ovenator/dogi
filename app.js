@@ -3,6 +3,7 @@ const mergeStream = require('merge-stream');
 const Debug = require('debug');
 Debug.enable('*');
 const debug = Debug('app:http');
+const path = require('path');
 
 const express = require('express')
 const app = express()
@@ -12,10 +13,17 @@ const api = require('./api');
 const {extractEnvs} = require("./util");
 const {verify} = require('./crypto');
 
+app.get('/output/:instanceId/:output', wrap(async (req, res) => {
+    const {instanceId, output} = req.params;
+
+    const file = path.join(api.getInternalSharedDir(instanceId), `dogi.${output}`);
+    res.sendFile(file)
+}))
+
 app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     const {params, query} = req;
     const {url:sshUrl, protocol} = params;
-    const {df, id, file, cmd, bashc} = query;
+    const {df, id, file, bashc, cb} = query;
     const dockerfile = df || 'Dockerfile';
 
     if(!verify(req.url)) {
@@ -26,12 +34,28 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     const queryAction = query.action || 'peek';
     const queryOutput = query.output || (query.file ? 'file' : 'log');
 
-    validate('protocol', ['ssh', 'http'], protocol)
+    let queryCmd = null;
+    if (query.cmd) {
+        queryCmd = query.cmd.split(' ');
+    }
+
+    validate('protocol', ['ssh', 'http', 'https'], protocol);
     validate('action', ['peek', 'run', 'abort', 'restart'], queryAction)
     validate('output', ['file', 'log', 'status'], queryOutput)
 
     debug('starting lifecycle');
-    const result = await api.lifecycle({instanceIdSuffix: id, sshUrl, dockerfile, action: queryAction, file, cmd, bashc, env: extractEnvs('env', query)});
+    const result = await api.lifecycle({
+        instanceIdSuffix: id,
+        sshUrl,
+        dockerfile,
+        action: queryAction,
+        file,
+        cmd: queryCmd,
+        bashc,
+        env: extractEnvs('env', query),
+        callbackUrl: cb
+    });
+
     const {delayed, output} = result;
     debug('finished lifecycle')
 
@@ -99,7 +123,14 @@ function wrap(fn) {
     }
 }
 
-app.listen(port, () => {
-    console.log(`Dogi app listening at http://localhost:${port}`)
-})
+
+
+if(!module.parent) {
+    app.listen(port, () => {
+        console.log(`Dogi app listening at http://localhost:${port}`)
+    })
+} else {
+    module.exports = app;
+}
+
 
