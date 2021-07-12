@@ -43,7 +43,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
 
     validate('protocol', ['ssh', 'http', 'https'], protocol);
     validate('action', ['peek', 'run', 'abort', 'restart'], queryAction)
-    validate('output', ['file', 'log', 'status'], queryOutput)
+    // validate('output', ['file', 'log', 'status'], queryOutput)
 
     debug('starting lifecycle');
     const result = await api.lifecycle({
