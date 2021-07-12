@@ -3,15 +3,13 @@ const fs = require('fs');
 const fsp = fs.promises;
 const debug = require('debug');
 const axios = require('axios');
-const {pick} = require('lodash')
+const {forEach} = require('lodash')
 
 const docker = require('./docker')
-const {openPromise, toInstanceId} = require('./util');
+const {openPromise, toInstanceId, validateFilename} = require('./util');
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
-
-const {sha1} = require('./crypto');
 
 
 exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) => {
@@ -31,29 +29,8 @@ exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) =>
     });
 }
 
-exports.runOld = async ({instanceId, mount, cmd, bashc, output}) => {
-    let _cmd = null;
-    if (bashc) {
-        _cmd = ['bash', '-c', bashc];
-    }
-    let _createOptions = null;
 
-    if (mount) {
-        _createOptions = {
-            HostConfig: {
-                Binds: [
-                    `${mount.host}:${mount.container}`
-                ]
-            }
-        }
-    }
-
-    const resultTuple = await docker.run(instanceId, _cmd, output, _createOptions);
-    const [result, container] = resultTuple;
-    return {result, container};
-}
-
-exports.run = async function({instanceId, bashc, cmd, mount, env, output}) {
+exports.run = async function({instanceId, bashc, cmd, mounts, env, output}) {
 
     const image = instanceId;
 
@@ -88,11 +65,9 @@ exports.run = async function({instanceId, bashc, cmd, mount, env, output}) {
         'VolumesFrom': []
     };
 
-    if (mount) {
+    if (mounts) {
         const HostConfig = {
-            Binds: [
-                `${mount.host}:${mount.container}`
-            ]
+            Binds: mounts.map((mount) => `${mount.host}:${mount.container}`)
         };
 
         createOptions = {
@@ -154,9 +129,19 @@ const instancesById = {};
 exports.getRunningJobs = () => instancesById;
 
 
+exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action, cmd, env, bashc, callbackUrl, containerFiles, outputId}) => {
 
-exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, cmd, env, bashc, callbackUrl}) => {
-    let instanceId = toInstanceId({repoName: sshUrl, customId: instanceIdSuffix})
+    let urlWithProto = url;
+
+    if (urlProto !== 'ssh') {
+        urlWithProto = `${urlProto}://${url}`;
+    }
+
+    if (outputId) {
+        validateFilename(outputId);
+    }
+
+    let instanceId = toInstanceId({repoName: urlWithProto, customId: instanceIdSuffix});
 
     const currentInstance = instancesById[instanceId];
 
@@ -192,69 +177,73 @@ exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, 
     async function withoutInstance() {
         const instanceDir = getInternalSharedDir(instanceId);
         const logFilename = path.join(instanceDir, 'dogi.log');
-        const outputFilenameExternal = path.join(getExternalSharedDir(instanceId), 'dogi.file');
-        const outputFilenameInternal = path.join(instanceDir, 'dogi.file');
+
+        const fileObjects = [];
+        forEach(containerFiles, (containerPath, fileId) => {
+            const tmpFileName = `dogi.out.${fileId}`
+            fileObjects.push({
+                id: fileId,
+                containerPath: containerPath,
+                outputFilenameExternal: path.join(getExternalSharedDir(instanceId), tmpFileName),
+                outputFilenameInternal: path.join(instanceDir, tmpFileName)
+            });
+        })
 
         if (action === 'peek') {
-            await fsp.access(logFilename);
+            const outputFilename = path.join(instanceDir, `dogi.out.${outputId}`);
+            await fsp.access(outputFilename);
 
             const output =  {
-                log: logFilename,
+                [outputId]: outputFilename,
             };
-
-            try {
-                await fsp.access(outputFilenameInternal);
-                output.file = outputFilenameInternal;
-            } catch (e) {
-                debug('output file', outputFilenameInternal, 'is not available');
-            }
 
             return {output}
         }
 
         if (action === 'abort') {
-            throw new Error(`[abort] No existing jobs for ${sshUrl}`);
+            throw new Error(`[abort] No existing jobs for ${urlWithProto}`);
         }
 
         const newInstance = instancesById[instanceId] = {
             instanceId,
             started: Date.now(),
-            url: sshUrl,
+            url: urlWithProto,
             pendingRun: openPromise(),
             pendingRestart: null,
             delayed: null,
+            files: fileObjects,
             output: {
                 log: logFilename
             }
         };
 
-        if (file) {
-            newInstance.file = file;
-            newInstance.output.file = outputFilenameInternal;
-        }
-
         await fsp.rmdir(instanceDir, {recursive: true});
         await fsp.mkdir(instanceDir, {recursive: true});
 
-        await fsp.writeFile(logFilename, '');
-        await fsp.writeFile(outputFilenameInternal, '');
+        let mounts = [];
 
-        let mount = null;
+        for (const fileObj of fileObjects) {
+            const {outputFilenameInternal, outputFilenameExternal, id, containerPath} = fileObj;
+            newInstance.output[id] = outputFilenameInternal;
 
-        if(file) {
-            mount = {
-                container: file,
+            await fsp.writeFile(outputFilenameInternal, '');
+
+            mounts.push({
+                container: containerPath,
                 host: outputFilenameExternal
-            }
+            })
         }
+
+        await fsp.writeFile(logFilename, '');
+
 
         async function buildAndRun() {
             const buildLog = fs.createWriteStream(logFilename);
-            await exports.build({sshUrl, dockerfile, instanceId, output: buildLog});
+            await exports.build({sshUrl: urlWithProto, dockerfile, instanceId, output: buildLog});
 
             const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
-            const pendingRun = await exports.run({instanceId, mount, cmd, bashc, env, output: runLog});
+            const pendingRun = await exports.run({instanceId, mounts, cmd, bashc, env, output: runLog});
 
             newInstance.pendingRun.resolve(pendingRun);
             const result = await pendingRun.containerFinished;
@@ -266,12 +255,19 @@ exports.lifecycle = async ({sshUrl, instanceIdSuffix, dockerfile, action, file, 
 
             if (callbackUrl) {
                 const advertisedUrl = process.env['ADVERTISED_URL'] || 'http://localhost';
+
+                const output = {
+                    log:  `${advertisedUrl}/output/${instanceId}/log`
+                }
+
+                newInstance.files.forEach(fileObj => {
+                    const {id} = fileObj;
+                    output[id] = `${advertisedUrl}/output/${instanceId}/${id}`;
+                })
+
                 await axios.post(callbackUrl, {
                     env,
-                    output: {
-                        log:  `${advertisedUrl}/output/${instanceId}/log`,
-                        file: `${advertisedUrl}/output/${instanceId}/file`
-                    }
+                    output
                 });
             }
 
@@ -298,10 +294,12 @@ const internalSharedDir = '/tmp/dogi-shared/instances';
 fs.mkdirSync(internalSharedDir, {recursive: true});
 exports.getInternalSharedDir = getInternalSharedDir;
 function getInternalSharedDir(instanceId) {
+    validateFilename(instanceId);
     return path.join(internalSharedDir, instanceId)
 }
 
 const externalSharedDir = path.join(process.env['HOST_SHARED_DIR'] || '/tmp', 'dogi-shared/instances');
 function getExternalSharedDir(instanceId) {
+    validateFilename(instanceId);
     return path.join(externalSharedDir, instanceId);
 }

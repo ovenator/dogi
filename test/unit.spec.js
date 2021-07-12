@@ -1,6 +1,6 @@
 const should = require('should');
 
-const {extractEnvs} = require("../util");
+const {extractPrefixed} = require("../util");
 const {verifyInternal, sha1} = require("../crypto");
 
 describe('dogi:unit', function() {
@@ -34,7 +34,7 @@ describe('dogi:unit', function() {
             foo5: 'foo5',
         }
 
-        extractEnvs('env', query).should.eql({foo3: 'foo3', foo4: 'foo4'});
-        extractEnvs('foo2', query).should.eql({env_foo: 'foo2'});
+        extractPrefixed('env', query).should.eql({foo3: 'foo3', foo4: 'foo4'});
+        extractPrefixed('foo2', query).should.eql({env_foo: 'foo2'});
     })
 })

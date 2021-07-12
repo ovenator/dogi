@@ -37,13 +37,14 @@ exports.createLock = function(maxRunning, maxPending) {
     }
 }
 
-exports.extractEnvs = function extractEnvs(prefix, obj) {
+exports.extractPrefixed = function(prefix, obj, opts) {
+    const options = opts || {};
     const res = {};
     if (obj) {
         for (const [key, value] of Object.entries(obj)) {
-            // if (/^env_/i.test(key)) {
             if ((new RegExp(`^${prefix}_`, 'i')).test(key)) {
-                res[key.substr(prefix.length + 1)] = value;
+                const newKey = options.keepPrefix ? key : key.substr(prefix.length + 1);
+                res[newKey] = value;
             }
         }
     }
@@ -61,4 +62,10 @@ exports.toInstanceId = ({repoName, customId}) => {
 
 exports.wait = function wait(ms) {
     return new Promise(res => setTimeout(res, ms));
+}
+
+exports.validateFilename = (filename) => {
+    if(filename && !/^[a-zA-Z0-9_]+$/i.test(filename)) {
+        throw new Error('filename can contain only alphanumeric characters and _');
+    }
 }

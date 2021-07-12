@@ -10,20 +10,22 @@ const app = express()
 const port = 3001
 
 const api = require('./api');
-const {extractEnvs} = require("./util");
+const {extractPrefixed, validateFilename} = require("./util");
 const {verify} = require('./crypto');
 
 app.get('/output/:instanceId/:output', wrap(async (req, res) => {
     const {instanceId, output} = req.params;
 
-    const file = path.join(api.getInternalSharedDir(instanceId), `dogi.${output}`);
+    validateFilename(output)
+
+    const file = path.join(api.getInternalSharedDir(instanceId), `dogi.out.${output}`);
     res.sendFile(file)
 }))
 
 app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     const {params, query} = req;
-    const {url:sshUrl, protocol} = params;
-    const {df, id, file, bashc, cb} = query;
+    const {url, protocol} = params;
+    const {df, id, bashc, cb} = query;
     const dockerfile = df || 'Dockerfile';
 
     if(!verify(req.url)) {
@@ -32,7 +34,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     }
 
     const queryAction = query.action || 'peek';
-    const queryOutput = query.output || (query.file ? 'file' : 'log');
+    const queryOutput = query.output || 'log';
 
     let queryCmd = null;
     if (query.cmd) {
@@ -46,14 +48,16 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     debug('starting lifecycle');
     const result = await api.lifecycle({
         instanceIdSuffix: id,
-        sshUrl,
+        urlProto: protocol,
+        url,
         dockerfile,
         action: queryAction,
-        file,
         cmd: queryCmd,
         bashc,
-        env: extractEnvs('env', query),
-        callbackUrl: cb
+        env: extractPrefixed('env', query),
+        callbackUrl: cb,
+        containerFiles: extractPrefixed('file', query, {keepPrefix: true}),
+        outputId: queryOutput
     });
 
     const {delayed, output} = result;
