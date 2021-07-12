@@ -30,8 +30,8 @@ describe('dogi:e2e', function() {
             .reply(200, (uri, body) => {
                 body.env.foo.should.equal('bar');
                 body.output.should.eql({
-                    log: "http://localhost/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
-                    file_1: "http://localhost/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
+                    log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
+                    file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
                 })
             })
 
@@ -40,6 +40,10 @@ describe('dogi:e2e', function() {
             .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test&file_1=/app/mock/out/env.json')
             .expect(200);
 
+        res.body.output.should.eql({
+            log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
+            file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
+        })
 
         let fileRes = await req
             .get('/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1')

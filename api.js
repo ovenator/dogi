@@ -217,6 +217,8 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
             }
         };
 
+        newInstance.fileUrls = fileObjsToFileUrls({instanceId, files: fileObjects});
+
         await fsp.rmdir(instanceDir, {recursive: true});
         await fsp.mkdir(instanceDir, {recursive: true});
 
@@ -254,20 +256,9 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
             }
 
             if (callbackUrl) {
-                const advertisedUrl = process.env['ADVERTISED_URL'] || 'http://localhost';
-
-                const output = {
-                    log:  `${advertisedUrl}/output/${instanceId}/log`
-                }
-
-                newInstance.files.forEach(fileObj => {
-                    const {id} = fileObj;
-                    output[id] = `${advertisedUrl}/output/${instanceId}/${id}`;
-                })
-
                 await axios.post(callbackUrl, {
                     env,
-                    output
+                    output: newInstance.fileUrls
                 });
             }
 
@@ -287,6 +278,22 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
 
         return newInstance;
     }
+}
+
+function fileObjsToFileUrls({instanceId, files}) {
+
+    const advertisedUrl = process.env['ADVERTISED_URL'] || '';
+
+    const output = {
+        log:  `${advertisedUrl}/output/${instanceId}/log`
+    }
+
+    files.forEach(fileObj => {
+        const {id} = fileObj;
+        output[id] = `${advertisedUrl}/output/${instanceId}/${id}`;
+    })
+
+    return output;
 }
 
 //this necessary workaround until https://github.com/moby/moby/issues/32582 is implemented

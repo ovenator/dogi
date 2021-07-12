@@ -12,6 +12,7 @@ const port = 3001
 const api = require('./api');
 const {extractPrefixed, validateFilename} = require("./util");
 const {verify} = require('./crypto');
+const {pick} = require('lodash');
 
 app.get('/output/:instanceId/:output', wrap(async (req, res) => {
     const {instanceId, output} = req.params;
@@ -65,7 +66,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
 
     if (queryOutput === 'status') {
         await delayed;
-        res.end('Job finished');
+        res.json({output: result.fileUrls});
         return;
     }
 
