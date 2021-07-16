@@ -55,7 +55,7 @@ exports.extractPrefixed = function(prefix, obj, opts) {
 exports.toInstanceId = ({repoName, customId}) => {
     let instanceId = `dogi_${sha1(repoName)}`;
     if(customId) {
-        instanceId = `${instanceId}_${sha(customId)}`;
+        instanceId = `${instanceId}_${sha1(customId)}`;
     }
     return instanceId
 }

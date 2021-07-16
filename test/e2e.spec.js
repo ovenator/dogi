@@ -110,6 +110,25 @@ describe('dogi:e2e', function() {
         JSON.parse(res.text).should.have.property('foo').which.equals('bar');
     })
 
+
+    it('should run in parallel if id is provided', async function() {
+        this.timeout(hour);
+
+        let run1 = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=1&action=run&output=file_1&env_foo=bar1&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+        run1.then(() => console.log('run1 finished'));
+
+        let run2 = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=2&action=run&output=file_1&env_foo=bar2&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+        run2.then(() => console.log('run2 finished'));
+
+        const run1Res = await run1;
+        const run2Res = await run2;
+
+        JSON.parse(run1Res.text).should.have.property('foo').which.equals('bar1');
+        JSON.parse(run2Res.text).should.have.property('foo').which.equals('bar2');
+    })
+
     it('should execute via bashc', async function() {
         this.timeout(hour);
 
