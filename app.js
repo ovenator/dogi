@@ -48,7 +48,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
 
     debug('starting lifecycle');
     const result = await api.lifecycle({
-        instanceIdSuffix: id,
+        instanceDuplicateId: id,
         urlProto: protocol,
         url,
         dockerfile,

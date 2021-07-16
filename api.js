@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
-const debug = require('debug');
+const debug = require('debug')('dogi:app:api');
 const axios = require('axios');
 const {forEach} = require('lodash')
 
@@ -50,6 +50,7 @@ exports.run = async function({instanceId, bashc, cmd, mounts, env, output}) {
     }
 
     let createOptions = {
+        'name': instanceId,
         'Hostname': '',
         'User': '',
         'AttachStdin': false,
@@ -81,10 +82,13 @@ exports.run = async function({instanceId, bashc, cmd, mounts, env, output}) {
 
     async function abort() {
         const container = await containerCreated;
-        await container.remove({force: true});
+        await silentKill(container);
     }
 
     async function start() {
+        //cleanup possible dangling container from previous runs
+        await silentKillByName(instanceId);
+
         const container = await docker.createContainer(createOptions);
         containerCreated.resolve(container);
 
@@ -107,9 +111,10 @@ exports.run = async function({instanceId, bashc, cmd, mounts, env, output}) {
 
             return {result, container};
         } catch (e) {
+            e.status = 500;
             throw e;
         } finally {
-            await container.remove({force: true});
+            await silentKill(container)
         }
 
     }
@@ -128,8 +133,20 @@ const instancesById = {};
 
 exports.getRunningJobs = () => instancesById;
 
+async function silentKill(container) {
+    try {
+        await container.remove({force: true});
+    } catch (e) {
+        debug('silently failed to remove container', e);
+    }
+}
 
-exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action, cmd, env, bashc, callbackUrl, containerFiles, outputId}) => {
+async function silentKillByName(containerName) {
+    let container = docker.getContainer(containerName);
+    await silentKill(container);
+}
+
+exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, action, cmd, env, bashc, callbackUrl, containerFiles, outputId}) => {
 
     let urlWithProto = url;
 
@@ -141,34 +158,39 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
         validateFilename(outputId);
     }
 
-    let instanceId = toInstanceId({repoName: urlWithProto, customId: instanceIdSuffix});
+    let instanceId = toInstanceId({repoName: urlWithProto, customId: instanceDuplicateId});
 
     const currentInstance = instancesById[instanceId];
 
     if(currentInstance) {
+        debug('calling withInstance with instance, env', currentInstance, env);
         return withInstance(currentInstance);
     }
 
+    debug('calling without instance with env', env)
     return withoutInstance();
 
     async function withInstance(instance) {
 
         if (action === 'restart') {
-            const {pendingRestart} = instance;
-            if (pendingRestart) {
-                pendingRestart.reject(new Error('Killed by subsequent restart'));
+            /*
+             We want to keep only the most recent restart, because restart is the only way user can change call params
+             */
+            if(instance.pendingRestart) {
+                instance.pendingRestart.reject('Killed by subsequent restart');
             }
 
-            instance.pendingRestart = openPromise();
+            instance.pendingRestart = openPromise()
 
-            const pendingRun = await Promise.race([instance.pendingRun, instance.pendingRestart]);
-            await pendingRun.abort();
+            await Promise.race([instance.abort(), instance.pendingRestart]);
             return withoutInstance();
         }
 
         if (action === 'abort') {
-            const pendingRun = await instance.pendingRun;
-            await pendingRun.abort();
+            if(instance.pendingRestart) {
+                instance.pendingRestart.reject('Killed by abort');
+            }
+            await instance.abort();
         }
 
         return instance;
@@ -176,7 +198,7 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
 
     async function withoutInstance() {
         const instanceDir = getInternalSharedDir(instanceId);
-        const logFilename = path.join(instanceDir, 'dogi.log');
+        const logFilename = path.join(instanceDir, 'dogi.out.log');
 
         const fileObjects = [];
         forEach(containerFiles, (containerPath, fileId) => {
@@ -208,8 +230,8 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
             instanceId,
             started: Date.now(),
             url: urlWithProto,
-            pendingRun: openPromise(),
-            pendingRestart: null,
+            runHandleCreated: openPromise(),
+            instanceFinished: openPromise(),
             delayed: null,
             files: fileObjects,
             output: {
@@ -218,6 +240,17 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
         };
 
         newInstance.fileUrls = fileObjsToFileUrls({instanceId, files: fileObjects});
+
+        newInstance.abort = async function() {
+            if (newInstance.isBeingDestroyed) {
+                return this.instanceFinished;
+            }
+            newInstance.isBeingDestroyed = true;
+            const runHandle = await this.runHandleCreated
+            await runHandle.abort();
+            await this.instanceFinished;
+        }
+
 
         await fsp.rmdir(instanceDir, {recursive: true});
         await fsp.mkdir(instanceDir, {recursive: true});
@@ -245,10 +278,10 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
 
             const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
-            const pendingRun = await exports.run({instanceId, mounts, cmd, bashc, env, output: runLog});
+            const runHandle = await exports.run({instanceId, mounts, cmd, bashc, env, output: runLog});
 
-            newInstance.pendingRun.resolve(pendingRun);
-            const result = await pendingRun.containerFinished;
+            newInstance.runHandleCreated.resolve(runHandle);
+            const result = await runHandle.containerFinished;
             const {StatusCode} = result;
 
             if(StatusCode !== 0) {
@@ -274,6 +307,7 @@ exports.lifecycle = async ({url, urlProto, instanceIdSuffix, dockerfile, action,
             })
             .finally(() => {
                 delete instancesById[instanceId];
+                newInstance.instanceFinished.resolve();
             })
 
         return newInstance;

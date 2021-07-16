@@ -11,7 +11,7 @@ debug.enable('*');
 const docker = require('../docker');
 const api = require('../api');
 const app = require('../app');
-const {toInstanceId, wait} = require('../util');
+const {toInstanceId, wait, openPromise} = require('../util');
 
 process.env['BYPASS_SIGNATURES'] = 'true'
 
@@ -19,6 +19,11 @@ describe('dogi:e2e', function() {
     const hour = 60 * 60 * 1000;
     beforeEach(async () => {
         await fsp.rmdir(api.getInternalSharedDir(''), {recursive: true})
+    })
+
+    it('should get container', async function() {
+        this.timeout(hour);
+        docker.getContainer()
     })
 
 
@@ -84,5 +89,54 @@ describe('dogi:e2e', function() {
         scope.pendingMocks().should.have.length(1);
         nock.cleanAll();
         scope.done()
+    })
+
+    it('should execute script', async function() {
+        this.timeout(hour);
+
+        let res = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=file_1&env_foo=bar&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+    })
+
+    it('should only finish last restart', async function() {
+        this.timeout(hour);
+
+        let appRun = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=0&cmd=npm run mock-env&file_1=/app/mock/out/env.json')
+            .expect(500);
+            appRun.then(() => console.log('appRun finished'))
+
+         await wait(1000);
+
+        let appRestart1 = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=restart&output=status&env_foo=1&cmd=npm run mock-env&file_1=/app/mock/out/env.json')
+            .expect(500);
+        appRestart1.then(() => console.log('appRestart1 finished'))
+
+        await wait(1000);
+
+        let appRestart2 = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=restart&output=status&env_foo=2&cmd=npm run mock-env&file_1=/app/mock/out/env.json')
+            .expect(500);
+        appRestart2.then(() => console.log('appRestart2 finished'))
+
+        await wait(1000);
+
+        let appRestart3 = request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=restart&output=file_1&env_foo=3&cmd=npm run mock-env&file_1=/app/mock/out/env.json')
+            .expect(200);
+        appRestart3.then(() => console.log('appRestart3 finished'))
+
+        await appRun;
+        await appRestart1;
+        await appRestart2;
+        await appRestart3;
+
+        let resultPeek = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=peek&output=file_1')
+
+        JSON.parse(resultPeek.text).should.have.property('foo').which.equals('3');
     })
 })
