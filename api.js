@@ -285,7 +285,7 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
             const {StatusCode} = result;
 
             if(StatusCode !== 0) {
-                throw new Error('Execution failed with code', StatusCode);
+                throw new Error(`Execution failed with code ${StatusCode}`);
             }
 
             if (callbackUrl) {

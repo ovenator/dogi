@@ -91,13 +91,31 @@ describe('dogi:e2e', function() {
         scope.done()
     })
 
-    it('should execute script', async function() {
+    it('should return status 500 when process returns non zero', async function() {
+        this.timeout(hour);
+
+        let res = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&cmd=npm run mock-fail')
+            .expect(500);
+
+        res.text.should.containEql('Execution failed with code 1')
+    })
+
+    it('should execute via cmd', async function() {
         this.timeout(hour);
 
         let res = await request(app)
             .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=file_1&env_foo=bar&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
 
         JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+    })
+
+    it('should execute via bashc', async function() {
+        this.timeout(hour);
+
+        let res = await request(app)
+            .get('/https/github.com/ovenator/dogi-scrapy-demo.git?action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy')
+            .expect(200)
     })
 
     it('should only finish last restart', async function() {
