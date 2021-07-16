@@ -11,11 +11,18 @@ Dogi also supports HTTP callbacks to notify your app via POST with the result of
 ### Demo
 The following will checkout the repository, build the Dockerfile, run the command and stream the selected file to you in real time. Optional signature prevents clients from tampering the parameters
 
+#### Get scraped data
 https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=cab976410e8cb7b2dd85eee67c43d17e6d314c0e
+
+#### Get logs
 https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=log&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=fc18f584ca659bdff8033111677365e8c23d8b34
+
+#### Get HTTP status and links to output files
 https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=status&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=3d72af23cee53efe1ba4bd60e48fd2e8858e1bd0
 
-Note that if you want to run multiple instances in parallel, you have to supply an id param. If you call run multiple times on the same id, it will just attach to the previous run, not taking into account the changes in parameters. If you want to change the parameters, use action=restart   
+#### Pass ENV variables
+Note that if you want to run multiple instances in parallel, you have to supply an id param. If you call `action=run` multiple times on the same id, it will just attach to the previous run, not taking into account the changes in parameters. If you want to change the parameters, use `action=restart`
+
 https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&env_MAX_PAGES=1&sig=e5e4bb1389606c772e5f1cd760a8574ebadb0e05
 
 
