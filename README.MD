@@ -2,6 +2,7 @@
 
 Dogi makes it possible to run code in any git repo via HTTP without deployment or special API in your code.   
 Out of the box, you will get an HTTP stream of your build and run logs and HTTP code mapped your script exit code (0 - 200, non-zero - 500).   
+
 You can also reference arbitrary files inside your container and have it streamed to you in real time just like `tail -f`.   
 Imagine like scraping a website and have 3 different files, one with the scraped data, second with list of failed urls and third with scrapy logs for debugging.
 
@@ -10,10 +11,13 @@ Dogi also supports HTTP callbacks to notify your app via POST with the result of
 ### Demo
 The following will checkout the repository, build the Dockerfile, run the command and stream the selected file to you in real time. Optional signature prevents clients from tampering the parameters
 
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&env_MAX_PAGES=1&sig=e5e4bb1389606c772e5f1cd760a8574ebadb0e05
+https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=cab976410e8cb7b2dd85eee67c43d17e6d314c0e
+https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=log&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=fc18f584ca659bdff8033111677365e8c23d8b34
+https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=status&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=3d72af23cee53efe1ba4bd60e48fd2e8858e1bd0
 
 Note that if you want to run multiple instances in parallel, you have to supply an id param. If you call run multiple times on the same id, it will just attach to the previous run, not taking into account the changes in parameters. If you want to change the parameters, use action=restart   
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=cab976410e8cb7b2dd85eee67c43d17e6d314c0e
+https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&env_MAX_PAGES=1&sig=e5e4bb1389606c772e5f1cd760a8574ebadb0e05
+
 
 
 ### Installation
