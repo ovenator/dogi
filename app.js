@@ -109,6 +109,13 @@ app.get('/jobs', wrap(async (req, res) => {
     res.json(api.getRunningJobs());
 }))
 
+app.get('/collect', wrap(async (req, res) => {
+    const {query} = req;
+    const {output} = query;
+    await api.collectOutputs({output, stream: res});
+    return;
+}))
+
 function validate(param, allowed, actual) {
     if (!allowed.includes(actual)) {
         throw new Error(`Invalid value '${actual}' of '${param}', allowed values are ${JSON.stringify(allowed)}`)

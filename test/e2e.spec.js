@@ -21,95 +21,113 @@ describe('dogi:e2e', function() {
         await fsp.rmdir(api.getInternalSharedDir(''), {recursive: true})
     })
 
-    it('should get container', async function() {
-        this.timeout(hour);
-        docker.getContainer()
-    })
+    describe('callbacks', () => {
+        it('should call callback on completion', async function() {
+            this.timeout(hour);
 
-
-    it('should call callback on completion', async function() {
-        this.timeout(hour);
-
-        const scope = nock('http://example.com')
-            .post('/test')
-            .reply(200, (uri, body) => {
-                body.env.foo.should.equal('bar');
-                body.output.should.eql({
-                    log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
-                    file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(200, (uri, body) => {
+                    body.env.foo.should.equal('bar');
+                    body.output.should.eql({
+                        log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
+                        file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
+                    })
                 })
+
+            const req = request(app)
+            let res = await req
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test&file_1=/app/mock/out/env.json')
+                .expect(200);
+
+            res.body.output.should.eql({
+                log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
+                file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
             })
 
-        const req = request(app)
-        let res = await req
-            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test&file_1=/app/mock/out/env.json')
-            .expect(200);
+            let fileRes = await req
+                .get('/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1')
+                .expect(200, );
 
-        res.body.output.should.eql({
-            log: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/log",
-            file_1: "/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1"
+
+            const obj = JSON.parse(fileRes.body.toString());
+            obj.foo.should.eql('bar');
+            scope.done();
+
         })
 
-        let fileRes = await req
-            .get('/output/dogi_45d218fc28c14ec629065042c0de0ba6bc0c5a34/file_1')
-            .expect(200, );
+        it('should fail the run when callback fails', async function() {
+            this.timeout(hour);
 
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(500)
 
-        const obj = JSON.parse(fileRes.body.toString());
-        obj.foo.should.eql('bar');
-        scope.done();
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .expect(500);
 
-    })
-
-    it('should fail the run when callback fails', async function() {
-        this.timeout(hour);
-
-        const scope = nock('http://example.com')
-            .post('/test')
-            .reply(500)
-
-        let res = await request(app)
-            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
-            .expect(500);
-
-        scope.done();
-    })
-
-    it('should pass the headers', async function() {
-        this.timeout(hour);
-        process.env['CB_HEADERS'] = '{"foo": "bar"}';
-
-        const scope = nock('http://example.com', {
-            reqheaders: {
-                'content-type': 'application/json;charset=utf-8',
-                'foo': 'bar'
-            }
+            scope.done();
         })
-            .post('/test')
-            .reply(200)
 
-        let res = await request(app)
-            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
-            .expect(200);
+        it('should pass the headers to callback', async function() {
+            this.timeout(hour);
+            process.env['CB_HEADERS'] = '{"foo": "bar"}';
 
-        scope.done();
+            const scope = nock('http://example.com', {
+                reqheaders: {
+                    'content-type': 'application/json;charset=utf-8',
+                    'foo': 'bar'
+                }
+            })
+                .post('/test')
+                .reply(200)
+
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .expect(200);
+
+            scope.done();
+        })
+
+        it('should not call callback on error', async function() {
+            this.timeout(hour);
+
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(200)
+
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-fail&cb=http://example.com/test')
+                .expect(500);
+
+            scope.pendingMocks().should.have.length(1);
+            nock.cleanAll();
+            scope.done()
+        })
     })
 
-    it('should not call callback on error', async function() {
-        this.timeout(hour);
+    describe('commands', () => {
+        it('should execute via cmd', async function() {
+            this.timeout(hour);
 
-        const scope = nock('http://example.com')
-            .post('/test')
-            .reply(200)
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=file_1&env_foo=bar&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
 
-        let res = await request(app)
-            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-fail&cb=http://example.com/test')
-            .expect(500);
+            JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+        })
 
-        scope.pendingMocks().should.have.length(1);
-        nock.cleanAll();
-        scope.done()
+        it('should execute via bashc', async function() {
+            this.timeout(hour);
+
+            let res = await request(app)
+                .get('/https/github.com/ovenator/dogi-scrapy-demo.git?action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy')
+                .expect(200)
+        })
     })
+
+
+
 
     it('should return status 500 when process returns non zero', async function() {
         this.timeout(hour);
@@ -119,15 +137,6 @@ describe('dogi:e2e', function() {
             .expect(500);
 
         res.text.should.containEql('Execution failed with code 1')
-    })
-
-    it('should execute via cmd', async function() {
-        this.timeout(hour);
-
-        let res = await request(app)
-            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=file_1&env_foo=bar&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
-
-        JSON.parse(res.text).should.have.property('foo').which.equals('bar');
     })
 
 
@@ -149,13 +158,33 @@ describe('dogi:e2e', function() {
         JSON.parse(run2Res.text).should.have.property('foo').which.equals('bar2');
     })
 
-    it('should execute via bashc', async function() {
+    it('should collect outputs', async function() {
         this.timeout(hour);
 
-        let res = await request(app)
-            .get('/https/github.com/ovenator/dogi-scrapy-demo.git?action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy')
-            .expect(200)
+        let run1 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=1&action=run&output=file_1&env_foo=bar1&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let run2 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=2&action=run&output=file_1&env_foo=bar2&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let run3 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=3&action=run&output=file_1&env_foo=bar3&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let collect = await request(app)
+            .get('/collect?output=file_1');
+
+        const results = [];
+        for (const line of collect.text.split('\n')) {
+            if (line) {
+                results.push(JSON.parse(line));
+            }
+        }
+
+        results.should.have.length(3);
+        const bars = results.map(({foo}) => foo);
+        bars.should.containDeep(['bar1', 'bar2', 'bar3']);
     })
+
 
     it('should only finish last restart', async function() {
         this.timeout(hour);

@@ -4,6 +4,7 @@ const fsp = fs.promises;
 const debug = require('debug')('dogi:app:api');
 const axios = require('axios');
 const {forEach} = require('lodash')
+const glob = require("glob");
 
 const docker = require('./docker')
 const {openPromise, toInstanceId, validateFilename} = require('./util');
@@ -316,6 +317,32 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
     }
 }
 
+exports.collectOutputs = async ({output, stream}) => {
+    validateFilename(output);
+    const baseDir = getInternalSharedDir();
+    const files = await new Promise((res, rej) => {
+        glob(path.join(baseDir, `*/dogi.out.${output}`), (err, files) => {
+            if (err) {
+                return rej(err);
+            }
+            res(files);
+        })
+    })
+
+    for (const fn of files) {
+        await new Promise((res, rej) => {
+            const rs = fs.createReadStream(fn);
+            rs.pipe(stream, {end: false})
+            rs.on('error', (e) => rej(e));
+            rs.on('end', () => res());
+        })
+        stream.write('\n');
+    }
+
+    stream.end();
+}
+
+
 function fileObjsToFileUrls({instanceId, files}) {
 
     const advertisedUrl = process.env['ADVERTISED_URL'] || '';
@@ -337,6 +364,7 @@ const internalSharedDir = '/tmp/dogi-shared/instances';
 fs.mkdirSync(internalSharedDir, {recursive: true});
 exports.getInternalSharedDir = getInternalSharedDir;
 function getInternalSharedDir(instanceId) {
+    instanceId = instanceId || '';
     validateFilename(instanceId);
     return path.join(internalSharedDir, instanceId)
 }

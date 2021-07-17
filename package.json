@@ -8,6 +8,7 @@
     "debug": "^4.3.1",
     "dockerode": "^3.3.0",
     "express": "^4.17.1",
+    "glob": "^7.1.7",
     "lodash": "^4.17.21",
     "merge-stream": "^2.0.0",
     "nanoid": "^3.1.23",

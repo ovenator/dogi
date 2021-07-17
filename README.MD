@@ -52,7 +52,8 @@ https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&
 | CB_HEADERS                |    **{}**      | JSON with headers to be passed to the callback. Ex. `{"Authorization": "Bearer <token>"}`  |
 
 
-### Query params
+### GET /:protocol/:repo
+#### Query params
 
 | Name                      | Default value  | Description   |
 | :------------------------ | :------------- | :------------ |
@@ -65,3 +66,12 @@ https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&
 |   cb                      |                | When execution is finished, this url will be POST called with json payload similar to 'status' output. If the callback returns and error, the entire task will behave as failed |
 |   cmd                     |                | Will be passed as cmd command to the container split by spaces. Ex. `?cmd=node run start` will be passed to the container as `CMD [node, run, start`]`  |
 |   bashc                   |                | Alias for `CMD [bash, -c, command]`. Ex. `?bashc=command`  |
+
+
+### GET /collect
+Returns output from all instances and repos with given name joined together, can be useful for aggregate view of error logs
+#### Query params
+
+| Name                      | Default value  | Description   |
+| :------------------------ | :------------- | :------------ |
+|   output                  |                | Name of output to be collected. Ex. `output=file_errors`  |
