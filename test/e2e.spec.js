@@ -75,6 +75,26 @@ describe('dogi:e2e', function() {
         scope.done();
     })
 
+    it('should pass the headers', async function() {
+        this.timeout(hour);
+        process.env['CB_HEADERS'] = '{"foo": "bar"}';
+
+        const scope = nock('http://example.com', {
+            reqheaders: {
+                'content-type': 'application/json;charset=utf-8',
+                'foo': 'bar'
+            }
+        })
+            .post('/test')
+            .reply(200)
+
+        let res = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+            .expect(200);
+
+        scope.done();
+    })
+
     it('should not call callback on error', async function() {
         this.timeout(hour);
 

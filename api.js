@@ -292,6 +292,8 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
                 await axios.post(callbackUrl, {
                     env,
                     output: newInstance.fileUrls
+                }, {
+                    headers: JSON.parse(process.env['CB_HEADERS'] || '{}')
                 });
             }
 

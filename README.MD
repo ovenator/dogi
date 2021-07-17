@@ -49,6 +49,7 @@ https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&
 | SIGNATURES_SECRET         |                |  Secret used to sign the url `sha1(secret:/https/mygitrepo?foo=bar)` |
 | ADVERTISED_URL            |                |  Base url used in callbacks to reference the the dogi host for downloading output files |
 | HOST_SHARED_DIR           |    **/tmp**    | The directory on host machine to be used to store files, should be readable and writable by any user  |
+| CB_HEADERS                |    **{}**      | JSON with headers to be passed to the callback. Ex. `{"Authorization": "Bearer <token>"}`  |
 
 
 ### Query params
