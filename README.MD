@@ -50,16 +50,23 @@ https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&
 | ADVERTISED_URL            |                |  Base url used in callbacks to reference the the dogi host for downloading output files |
 | HOST_SHARED_DIR           |    **/tmp**    | The directory on host machine to be used to store files, should be readable and writable by any user  |
 | CB_HEADERS                |    **{}**      | JSON with headers to be passed to the callback. Ex. `{"Authorization": "Bearer <token>"}`  |
+| NAMESPACE                 |    **default** | When running multiple instances of Dogi on single host, this is used to avoid container and file name collisions |
 
 
 ### GET /:protocol/:repo
+#### Params
+
+| Name                      | Description      |
+| :------------------------ | :--------------- |
+|   protocol                | ssh, http, https |
+
 #### Query params
 
 | Name                      | Default value  | Description   |
 | :------------------------ | :------------- | :------------ |
 |   sig                     |                | Must the the last param. Required unless the BYPASS_SIGNATURES env var is set to true. |
-|   output                  |   log          | The selected will be tailed to the http reponse. <br/> file_* - tail the selected file inside container Ex. `output=file_myFile` <br/> log - tail the container build and run logs subsequently <br/> status - will hang until the task is finished, then returns 200 or 500 depending if the task succeeded, response will contain links to download output files  |
-|   action                  |   peek         | run - run the task, response will be tail of the selected output <br/> peek - just tail the selected output <br/> restart - abort and run subsequently <br/> abort - kill the task |
+|   output                  |   **log**      | The selected will be tailed to the http reponse. <br/> file_* - tail the selected file inside container Ex. `output=file_myFile` <br/> log - tail the container build and run logs subsequently <br/> status - will hang until the task is finished, then returns 200 or 500 depending if the task succeeded, response will contain links to download output files  |
+|   action                  |   **peek**     | run - run the task, response will be tail of the selected output <br/> peek - just tail the selected output <br/> restart - abort and run subsequently <br/> abort - kill the task |
 |   file_*                  |                | Reference file inside container. Ex: `?file_myFile=/app/myFile.json`   |
 |   env_*                   |                | Pass environment variable to container. Ex: `?env_FOO=bar` will run container with `FOO` env variable |
 |   id                      |                | To be able to reference multiple concurrent runs based on the same git repo |

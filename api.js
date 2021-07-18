@@ -7,7 +7,7 @@ const {forEach} = require('lodash')
 const glob = require("glob");
 
 const docker = require('./docker')
-const {openPromise, toInstanceId, validateFilename} = require('./util');
+const {openPromise, toInstanceId, validateFilename, getNamespace} = require('./util');
 
 const simpleGit = require('simple-git');
 const git = simpleGit();
@@ -321,7 +321,7 @@ exports.collectOutputs = async ({output, stream}) => {
     validateFilename(output);
     const baseDir = getInternalSharedDir();
     const files = await new Promise((res, rej) => {
-        glob(path.join(baseDir, `*/dogi.out.${output}`), (err, files) => {
+        glob(path.join(baseDir, `dogi_${getNamespace()}_*/dogi.out.${output}`), (err, files) => {
             if (err) {
                 return rej(err);
             }

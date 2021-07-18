@@ -52,11 +52,17 @@ exports.extractPrefixed = function(prefix, obj, opts) {
     return res;
 }
 
+exports.getNamespace = function() {
+    return process.env['NAMESPACE'] || 'default';
+}
+
 exports.toInstanceId = ({repoName, customId}) => {
-    let instanceId = `dogi_${sha1(repoName)}`;
+    let instanceId = `dogi_${exports.getNamespace()}_${sha1(repoName)}`;
+
     if(customId) {
         instanceId = `${instanceId}_${sha1(customId)}`;
     }
+
     return instanceId
 }
 

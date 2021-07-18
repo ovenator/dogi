@@ -9,8 +9,7 @@ debug.enable('*');
 const docker = require('../docker');
 const api = require('../api');
 
-
-describe('dogi', () => {
+describe('dogi:DEPRECATED', () => {
     const hour = 60 * 60 * 1000;
     beforeEach(async () => {
         await fsp.rmdir(api.getInternalSharedDir(''), {recursive: true})
