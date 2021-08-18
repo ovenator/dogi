@@ -5,13 +5,16 @@ Debug.enable('*');
 const debug = Debug('app:http');
 const path = require('path');
 
-const express = require('express')
-const app = express()
-const port = 3001
+const express = require('express');
+const app = express();
+const port = 3001;
+
+const bodyParser = require('body-parser');
+app.use(bodyParser.json());
 
 const api = require('./api');
 const {extractPrefixed, validateFilename} = require("./util");
-const {verify} = require('./crypto');
+const {verify, verificationEnabled} = require('./crypto');
 const {pick} = require('lodash');
 
 app.get('/output/:instanceId/:output', wrap(async (req, res) => {
@@ -23,10 +26,24 @@ app.get('/output/:instanceId/:output', wrap(async (req, res) => {
     res.sendFile(file)
 }))
 
+app.post('/:protocol/:url(*)', wrap(async (req, res) => {
+    if (verificationEnabled()) {
+        throw new Error('Cannot use POST when url signatures are required');
+    }
+
+    const params = {...req.body, ...req.query, ...req.params};
+    await processRequest(req, res, {params});
+}))
+
 app.get('/:protocol/:url(*)', wrap(async (req, res) => {
-    const {params, query} = req;
+    const params = {...req.query, ...req.params}
+    await processRequest(req, res, {params});
+}))
+
+async function processRequest (req, res, {params}) {
     const {url, protocol} = params;
-    const {df, id, bashc, cb} = query;
+    const {df, id, bashc, cb} = params;
+
     const dockerfile = df || 'Dockerfile';
 
     if(!verify(req.url)) {
@@ -34,12 +51,12 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
         return;
     }
 
-    const queryAction = query.action || 'peek';
-    const queryOutput = query.output || 'log';
+    const queryAction = params.action || 'peek';
+    const queryOutput = params.output || 'log';
 
     let queryCmd = null;
-    if (query.cmd) {
-        queryCmd = query.cmd.split(' ');
+    if (params.cmd) {
+        queryCmd = params.cmd.split(' ');
     }
 
     validate('protocol', ['ssh', 'http', 'https'], protocol);
@@ -55,9 +72,9 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
         action: queryAction,
         cmd: queryCmd,
         bashc,
-        env: extractPrefixed('env', query),
+        env: extractPrefixed('env', params),
         callbackUrl: cb,
-        containerFiles: extractPrefixed('file', query, {keepPrefix: true}),
+        containerFiles: extractPrefixed('file', params, {keepPrefix: true}),
         outputId: queryOutput
     });
 
@@ -103,7 +120,7 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
 
     logStream.end();
     res.end()
-}))
+}
 
 app.get('/jobs', wrap(async (req, res) => {
     res.json(api.getRunningJobs());

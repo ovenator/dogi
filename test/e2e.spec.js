@@ -124,6 +124,22 @@ describe('dogi:e2e', function() {
                 .get('/https/github.com/ovenator/dogi-scrapy-demo.git?action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy')
                 .expect(200)
         })
+
+        it('should execute with params via POST', async function() {
+            this.timeout(hour);
+
+            let res = await request(app)
+                .post('/https/github.com/ovenator/dogi.git')
+                .send({
+                    action: 'run',
+                    env_foo: 'bar',
+                    cmd: 'npm run mock-env',
+                    file_1: '/app/mock/out/env.json',
+                    output: 'file_1'
+                });
+
+            JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+        })
     })
 
 

@@ -16,8 +16,12 @@ exports.verifyInternal = function verifyInternal(surl, secret) {
     return exports.sha1(`${secret}:${url}`) === sig;
 }
 
+exports.verificationEnabled = function () {
+    return process.env['BYPASS_SIGNATURES'] !== 'true';
+};
+
 exports.verify = function verify(surl) {
-    if(process.env['BYPASS_SIGNATURES'] === 'true') {
+    if(!exports.verificationEnabled()) {
         return true;
     }
 
