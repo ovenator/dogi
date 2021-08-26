@@ -11,14 +11,15 @@ debug.enable('*');
 const docker = require('../docker');
 const api = require('../api');
 const app = require('../app');
-const {toInstanceId, wait, openPromise} = require('../util');
+const {wait} = require('../util');
+const {getInternalSharedDir} = require('../common');
 
 process.env['BYPASS_SIGNATURES'] = 'true'
 
 describe('dogi:e2e', function() {
     const hour = 60 * 60 * 1000;
     beforeEach(async () => {
-        await fsp.rmdir(api.getInternalSharedDir(''), {recursive: true})
+        await fsp.rmdir(getInternalSharedDir(''), {recursive: true})
     })
 
     describe('callbacks', () => {
@@ -66,6 +67,61 @@ describe('dogi:e2e', function() {
             let res = await request(app)
                 .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
                 .expect(500);
+
+            scope.done();
+        })
+
+        it.skip('should include callback response in status for failure', async function() {
+            this.timeout(hour);
+
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(500, {
+                    callback: 'response'
+                })
+
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .expect(500);
+
+            res.body.cb_response.should.equal('{"callback":"response"}')
+
+            scope.done();
+        })
+
+        it('should include callback response in status for success', async function() {
+            this.timeout(hour);
+
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(200, {
+                    callback: 'response'
+                })
+
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .expect(200);
+
+            res.body.cb.response.status.should.equal(200);
+            res.body.cb.response.data.should.eql({"callback": "response"});
+
+            scope.done();
+        })
+
+        it.skip('should include callback response in log output', async function() {
+            this.timeout(hour);
+
+            const scope = nock('http://example.com')
+                .post('/test')
+                .reply(500, {
+                    callback: 'response'
+                })
+
+            let res = await request(app)
+                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=log&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .expect(500);
+
+            res.body.should.containEql('{"callback":"response"}')
 
             scope.done();
         })
@@ -133,6 +189,24 @@ describe('dogi:e2e', function() {
                 .send({
                     action: 'run',
                     env_foo: 'bar',
+                    cmd: 'npm run mock-env',
+                    file_1: '/app/mock/out/env.json',
+                    output: 'file_1'
+                });
+
+            JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+        })
+
+        it.skip('should not stream output when turned off', async function() {
+            this.timeout(hour);
+
+            //output_type: stream|wait|async
+            let res = await request(app)
+                .post('/https/github.com/ovenator/dogi.git')
+                .send({
+                    action: 'run',
+                    env_foo: 'bar',
+                    output_type: 'wait',
                     cmd: 'npm run mock-env',
                     file_1: '/app/mock/out/env.json',
                     output: 'file_1'

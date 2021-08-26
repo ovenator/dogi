@@ -56,11 +56,11 @@ exports.getNamespace = function() {
     return process.env['NAMESPACE'] || 'default';
 }
 
-exports.toInstanceId = ({repoName, customId}) => {
+exports.toInstanceId = ({repoName, explicitId}) => {
     let instanceId = `dogi_${exports.getNamespace()}_${sha1(repoName)}`;
 
-    if(customId) {
-        instanceId = `${instanceId}_${sha1(customId)}`;
+    if(explicitId) {
+        instanceId = `${instanceId}_${sha1(explicitId)}`;
     }
 
     return instanceId

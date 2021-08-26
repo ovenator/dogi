@@ -13,6 +13,7 @@ const bodyParser = require('body-parser');
 app.use(bodyParser.json());
 
 const api = require('./api');
+const {getInternalSharedDir} = require("./common");
 const {extractPrefixed, validateFilename} = require("./util");
 const {verify, verificationEnabled} = require('./crypto');
 const {pick} = require('lodash');
@@ -22,7 +23,7 @@ app.get('/output/:instanceId/:output', wrap(async (req, res) => {
 
     validateFilename(output)
 
-    const file = path.join(api.getInternalSharedDir(instanceId), `dogi.out.${output}`);
+    const file = path.join(getInternalSharedDir(instanceId), `dogi.out.${output}`);
     res.sendFile(file)
 }))
 
@@ -65,7 +66,7 @@ async function processRequest (req, res, {params}) {
 
     debug('starting lifecycle');
     const result = await api.lifecycle({
-        instanceDuplicateId: id,
+        explicitId: id,
         urlProto: protocol,
         url,
         dockerfile,
@@ -78,19 +79,19 @@ async function processRequest (req, res, {params}) {
         outputId: queryOutput
     });
 
-    const {delayed, output} = result;
+    const {delayed} = result;
     debug('finished lifecycle')
 
     if (queryOutput === 'status') {
         await delayed;
-        res.json({output: result.fileUrls});
+        res.json({output: result.outputs.outputUrls, cb: result.cb});
         return;
     }
 
     res.setHeader("Connection", "Keep-Alive");
     res.setHeader("Keep-Alive", "timeout=86400, max=1000");
     res.setHeader("Content-Type", "text/plain");
-    const logStream = ts.createReadStream(output[queryOutput])
+    const logStream = ts.createReadStream(result.outputs.outputFilesById[queryOutput])
     const firstEofPromise = new Promise(res => logStream.on('eof', () => res()));
     logStream.pipe(res);
 

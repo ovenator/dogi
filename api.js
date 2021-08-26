@@ -2,8 +2,6 @@ const path = require('path');
 const fs = require('fs');
 const fsp = fs.promises;
 const debug = require('debug')('dogi:app:api');
-const axios = require('axios');
-const {forEach} = require('lodash')
 const glob = require("glob");
 
 const docker = require('./docker')
@@ -12,6 +10,9 @@ const {openPromise, toInstanceId, validateFilename, getNamespace} = require('./u
 const simpleGit = require('simple-git');
 const git = simpleGit();
 
+const {processCallback} = require("./callbacks");
+const {createOutputs} = require('./outputs');
+const {getInternalSharedDir} = require('./common');
 
 exports.build = async ({sshUrl, instanceId, dockerfile: _dockerfile, output}) => {
     const dockerfile = _dockerfile || 'Dockerfile';
@@ -147,7 +148,17 @@ async function silentKillByName(containerName) {
     await silentKill(container);
 }
 
-exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, action, cmd, env, bashc, callbackUrl, containerFiles, outputId}) => {
+
+
+
+/**
+ * @typedef {Object} ContainerParams
+ * @property {string} cmd
+ * @property {string} bashc
+ * @property {string} env
+ * */
+
+exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, env, bashc, callbackUrl, containerFiles: containerFilesById, outputId}) => {
 
     let urlWithProto = url;
 
@@ -159,7 +170,7 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
         validateFilename(outputId);
     }
 
-    let instanceId = toInstanceId({repoName: urlWithProto, customId: instanceDuplicateId});
+    let instanceId = toInstanceId({repoName: urlWithProto, explicitId});
 
     const currentInstance = instancesById[instanceId];
 
@@ -199,48 +210,57 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
 
     async function withoutInstance() {
         const instanceDir = getInternalSharedDir(instanceId);
-        const logFilename = path.join(instanceDir, 'dogi.out.log');
-
-        const fileObjects = [];
-        forEach(containerFiles, (containerPath, fileId) => {
-            const tmpFileName = `dogi.out.${fileId}`
-            fileObjects.push({
-                id: fileId,
-                containerPath: containerPath,
-                outputFilenameExternal: path.join(getExternalSharedDir(instanceId), tmpFileName),
-                outputFilenameInternal: path.join(instanceDir, tmpFileName)
-            });
-        })
 
         if (action === 'peek') {
             const outputFilename = path.join(instanceDir, `dogi.out.${outputId}`);
             await fsp.access(outputFilename);
 
-            const output =  {
-                [outputId]: outputFilename,
+            /** @type {Outputs} */
+            const outputs =  {
+                outputFilesById: {
+                    [outputId]: outputFilename,
+                }
             };
 
-            return {output}
+            return {outputs}
         }
 
         if (action === 'abort') {
             throw new Error(`[abort] No existing jobs for ${urlWithProto}`);
         }
 
+        await fsp.rmdir(instanceDir, {recursive: true});
+        await fsp.mkdir(instanceDir, {recursive: true});
+        const outputs = await createOutputs(instanceId, containerFilesById);
+
+        /**
+         * @typedef {Object} DogiInstance
+         * @property {string} instanceId - dogi_{namespace}_{repoHash}_{idHash}
+         * @property {string} explicitId - user provided id
+         * @property {date} started
+         * @property {Promise.<any>} runHandleCreated - resolved when container is started
+         * @property {Promise.<any>} instanceFinished - resolved when instance is finished no matter if successful
+         * @property {Promise.<any>} delayed - resolved when instance is finished, throws if error occurs
+         * @property {boolean} isBeingDestroyed - set when abort is called
+         * @property {Array.<FileOutput>} fileObjects - resolved when instance is finished, throws if error occurs
+         * @property {Outputs} outputs
+         * @property {CallbackResult} cb
+         * @property {Object} env
+         * */
+
+        /** @type {DogiInstance} */
         const newInstance = instancesById[instanceId] = {
             instanceId,
+            explicitId,
             started: Date.now(),
             url: urlWithProto,
             runHandleCreated: openPromise(),
             instanceFinished: openPromise(),
+            isBeingDestroyed: false,
             delayed: null,
-            files: fileObjects,
-            output: {
-                log: logFilename
-            }
+            outputs,
+            env
         };
-
-        newInstance.fileUrls = fileObjsToFileUrls({instanceId, files: fileObjects});
 
         newInstance.abort = async function() {
             if (newInstance.isBeingDestroyed) {
@@ -252,34 +272,14 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
             await this.instanceFinished;
         }
 
-
-        await fsp.rmdir(instanceDir, {recursive: true});
-        await fsp.mkdir(instanceDir, {recursive: true});
-
-        let mounts = [];
-
-        for (const fileObj of fileObjects) {
-            const {outputFilenameInternal, outputFilenameExternal, id, containerPath} = fileObj;
-            newInstance.output[id] = outputFilenameInternal;
-
-            await fsp.writeFile(outputFilenameInternal, '');
-
-            mounts.push({
-                container: containerPath,
-                host: outputFilenameExternal
-            })
-        }
-
-        await fsp.writeFile(logFilename, '');
-
-
         async function buildAndRun() {
+            const logFilename = newInstance.outputs.outputFilesById['log'];
             const buildLog = fs.createWriteStream(logFilename);
             await exports.build({sshUrl: urlWithProto, dockerfile, instanceId, output: buildLog});
 
             const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
-            const runHandle = await exports.run({instanceId, mounts, cmd, bashc, env, output: runLog});
+            const runHandle = await exports.run({instanceId, mounts: newInstance.outputs.mounts, cmd, bashc, env, output: runLog});
 
             newInstance.runHandleCreated.resolve(runHandle);
             const result = await runHandle.containerFinished;
@@ -290,14 +290,14 @@ exports.lifecycle = async ({url, urlProto, instanceDuplicateId, dockerfile, acti
             }
 
             if (callbackUrl) {
-                await axios.post(callbackUrl, {
-                    env,
-                    output: newInstance.fileUrls
-                }, {
-                    headers: JSON.parse(process.env['CB_HEADERS'] || '{}')
-                });
+                const result = await processCallback(newInstance, callbackUrl);
+                newInstance.cb = result;
+                const {response: {status}} = result;
+                const isSuccess = status >= 200 && status < 300;
+                if (!isSuccess) {
+                    throw new Error('Callback failed')
+                }
             }
-
         }
 
         const delayed = buildAndRun();
@@ -342,35 +342,3 @@ exports.collectOutputs = async ({output, stream}) => {
     stream.end();
 }
 
-
-function fileObjsToFileUrls({instanceId, files}) {
-
-    const advertisedUrl = process.env['ADVERTISED_URL'] || '';
-
-    const output = {
-        log:  `${advertisedUrl}/output/${instanceId}/log`
-    }
-
-    files.forEach(fileObj => {
-        const {id} = fileObj;
-        output[id] = `${advertisedUrl}/output/${instanceId}/${id}`;
-    })
-
-    return output;
-}
-
-//this necessary workaround until https://github.com/moby/moby/issues/32582 is implemented
-const internalSharedDir = '/tmp/dogi-shared/instances';
-fs.mkdirSync(internalSharedDir, {recursive: true});
-exports.getInternalSharedDir = getInternalSharedDir;
-function getInternalSharedDir(instanceId) {
-    instanceId = instanceId || '';
-    validateFilename(instanceId);
-    return path.join(internalSharedDir, instanceId)
-}
-
-const externalSharedDir = path.join(process.env['HOST_SHARED_DIR'] || '/tmp', 'dogi-shared/instances');
-function getExternalSharedDir(instanceId) {
-    validateFilename(instanceId);
-    return path.join(externalSharedDir, instanceId);
-}
