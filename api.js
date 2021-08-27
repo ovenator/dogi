@@ -172,22 +172,20 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
 
     let instanceId = toInstanceId({repoName: urlWithProto, explicitId});
 
+    /** @type {DogiInstance} */
     const currentInstance = instancesById[instanceId];
+    const instance = currentInstance;
 
-    if(currentInstance) {
-        debug('calling withInstance with instance, env', currentInstance, env);
-        return withInstance(currentInstance);
+    if(!currentInstance) {
+        debug('no instance');
     }
 
-    debug('calling without instance with env', env)
-    return withoutInstance();
-
-    async function withInstance(instance) {
-
-        if (action === 'restart') {
+    if (action === 'restart') {
+        if (instance) {
             /*
-             We want to keep only the most recent restart, because restart is the only way user can change call params
-             */
+                We want to keep only the most recent restart, because restart is the only way user can change call params,
+                if this 'lock' would not be where, it would not be clear which restart won and the instance could have unexpected params
+            */
             if(instance.pendingRestart) {
                 instance.pendingRestart.reject('Killed by subsequent restart');
             }
@@ -195,39 +193,39 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
             instance.pendingRestart = openPromise()
 
             await Promise.race([instance.abort(), instance.pendingRestart]);
-            return withoutInstance();
         }
+    }
 
-        if (action === 'abort') {
+    if (action === 'abort') {
+        if (instance) {
             if(instance.pendingRestart) {
                 instance.pendingRestart.reject('Killed by abort');
             }
             await instance.abort();
         }
 
-        return instance;
+        throw new Error('[abort] Instance not found');
     }
 
+    const instanceDir = getInternalSharedDir(instanceId);
+
+    if (action === 'peek') {
+        const outputFilename = path.join(instanceDir, `dogi.out.${outputId}`);
+        await fsp.access(outputFilename);
+
+        /** @type {Outputs} */
+        const outputs =  {
+            outputFilesById: {
+                [outputId]: outputFilename,
+            }
+        };
+
+        return {outputs}
+    }
+
+    return withoutInstance();
+
     async function withoutInstance() {
-        const instanceDir = getInternalSharedDir(instanceId);
-
-        if (action === 'peek') {
-            const outputFilename = path.join(instanceDir, `dogi.out.${outputId}`);
-            await fsp.access(outputFilename);
-
-            /** @type {Outputs} */
-            const outputs =  {
-                outputFilesById: {
-                    [outputId]: outputFilename,
-                }
-            };
-
-            return {outputs}
-        }
-
-        if (action === 'abort') {
-            throw new Error(`[abort] No existing jobs for ${urlWithProto}`);
-        }
 
         await fsp.rmdir(instanceDir, {recursive: true});
         await fsp.mkdir(instanceDir, {recursive: true});
@@ -235,17 +233,21 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
 
         /**
          * @typedef {Object} DogiInstance
-         * @property {string} instanceId - dogi_{namespace}_{repoHash}_{idHash}
+         * @property {string} instanceId - dogi_{namespace}_{repoHash}_{explicitIdHash} used for container, image and file naming
          * @property {string} explicitId - user provided id
          * @property {date} started
+         * @property {Promise.<any>} pendingRestart - this is never resolved, only rejected for subsequent restarts
+         *                                            to ensure that only the most recent restart wins
+         *                                            the idea is, that on successful restart instance object will be recreated
+         *                                            and this set back to null
          * @property {Promise.<any>} runHandleCreated - resolved when container is started
          * @property {Promise.<any>} instanceFinished - resolved when instance is finished no matter if successful
          * @property {Promise.<any>} delayed - resolved when instance is finished, throws if error occurs
          * @property {boolean} isBeingDestroyed - set when abort is called
-         * @property {Array.<FileOutput>} fileObjects - resolved when instance is finished, throws if error occurs
          * @property {Outputs} outputs
          * @property {CallbackResult} cb
          * @property {Object} env
+         * @property {Function} abort - abort the instance by force removing the container
          * */
 
         /** @type {DogiInstance} */
