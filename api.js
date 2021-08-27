@@ -173,10 +173,9 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
     let instanceId = toInstanceId({repoName: urlWithProto, explicitId});
 
     /** @type {DogiInstance} */
-    const currentInstance = instancesById[instanceId];
-    const instance = currentInstance;
+    const instance = instancesById[instanceId];
 
-    if(!currentInstance) {
+    if(!instance) {
         debug('no instance');
     }
 
@@ -221,6 +220,12 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
         };
 
         return {outputs}
+    }
+
+    //catch all, we do not want to create duplicate instance
+    //needs to be checked by id, could have been removed by restart
+    if (instancesById[instanceId]) {
+        return instance;
     }
 
     return withoutInstance();
