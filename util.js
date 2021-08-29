@@ -75,3 +75,7 @@ exports.validateFilename = (filename) => {
         throw new Error('filename can contain only alphanumeric characters and _');
     }
 }
+
+exports.flushStream = async (stream) => {
+    await new Promise(res => stream.on('finish', res));
+}

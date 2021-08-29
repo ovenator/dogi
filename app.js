@@ -13,10 +13,10 @@ const bodyParser = require('body-parser');
 app.use(bodyParser.json());
 
 const api = require('./api');
+const {isEmpty} = require("lodash");
 const {getInternalSharedDir} = require("./common");
 const {extractPrefixed, validateFilename} = require("./util");
 const {verify, verificationEnabled} = require('./crypto');
-const {pick} = require('lodash');
 
 app.get('/output/:instanceId/:output', wrap(async (req, res) => {
     const {instanceId, output} = req.params;
@@ -41,7 +41,240 @@ app.get('/:protocol/:url(*)', wrap(async (req, res) => {
     await processRequest(req, res, {params});
 }))
 
-async function processRequest (req, res, {params}) {
+/**
+ *
+ * @param req
+ * @param res
+ * @param {JobParams} params
+ * @return {Promise<void>}
+ */
+async function processRequest (req, res, {params: _params}) {
+
+    /**
+     * @typedef JobParams
+     * @property {string} url
+     * @property {Protocol} protocol
+     * @property {Action} action
+     * @property {Output} output - log, status, file_*
+     * @property {OutputType} output_type
+     * @property {string} id
+     * @property {string} df - dockerfile
+     * @property {string} bashc
+     * @property {string} cmd
+     * @property {string} cb
+     * @property {string} attach
+     */
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Action = {
+        run: 'run',
+        peek: 'peek',
+        restart: 'restart',
+        abort: 'abort',
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Output = {
+        log: 'log',
+        status: 'status'
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const OutputType = {
+        async: 'async',
+        wait: 'wait',
+        stream: 'stream',
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Protocol = {
+        https: 'https',
+        http: 'http',
+        ssh: 'ssh'
+    }
+
+    const jobParams = {
+        action: '',
+        id: '',
+        url: '',
+        protocol: ''
+    }
+
+    const outputParams = {
+        output: '',
+        output_type: '',
+    }
+
+    const runParams = {
+        df: '',
+        bashc: '',
+        cmd: '',
+        cb: '',
+        attach: ''
+    }
+    
+     /** @type {JobParams} */
+    const params = {
+        output_type: 'stream',
+        output: 'log',
+        action: 'peek',
+        df: 'Dockerfile',
+        ..._params
+    }
+
+    const {action, output: outputId, output_type, url} = params;
+
+    let splitCmd = null;
+    if (params.cmd) {
+        splitCmd = params.cmd.split(' ');
+    }
+
+    /** @type {DogiInstance} */
+    const instance = await api.lifecycle({
+        explicitId: params.id,
+        urlProto: params.protocol,
+        url,
+        dockerfile: params.df,
+        action,
+        cmd: splitCmd,
+        bashc: params.bashc,
+        env: extractPrefixed('env', params),
+        callbackUrl: params.cb,
+        containerFiles: extractPrefixed('file', params, {keepPrefix: true}),
+        outputId
+    });
+
+
+    if (['1', 'true', true].includes(params.attach)) {
+        req.on('close', async function(err) {
+            debug('connection closed, killing attached instance');
+            await instance.abort();
+        });
+    }
+
+    const outputTypeHandlers = {
+        async wait() {
+            await instance.instanceFinished;
+            return this.async();
+        },
+        async async() {
+            const status = isEmpty(instance.errors) ? 200 : 500;
+            if (outputId === 'status') {
+                res
+                    .status(status)
+                    .json(instanceToStatus(instance));
+                return;
+            }
+            // await new Promise(res => setTimeout(res, 1000));
+            res
+                .status(status)
+                .sendFile(instance.outputs.outputFilesById[outputId]);
+        },
+        async stream() {
+            if (outputId === 'status') {
+                return this.wait();
+            }
+
+            res.setHeader("Connection", "Keep-Alive");
+            res.setHeader("Keep-Alive", "timeout=86400, max=1000");
+            res.setHeader("Content-Type", "text/plain");
+            const fileStream = ts.createReadStream(instance.outputs.outputFilesById[outputId])
+            const firstEofPromise = new Promise(res => fileStream.on('eof', () => res()));
+            fileStream.pipe(res);
+
+            if (!instance.delayed) {
+                debug('delayed is not set');
+            }
+
+            try {
+                await instance.delayed;
+                debug('finished delayed');
+                await firstEofPromise;
+                debug('finished log file');
+            } catch (e) {
+                throw e;
+            } finally {
+                fileStream.end();
+                res.end();
+            }
+
+        }
+    }
+
+    await outputTypeHandlers[output_type]();
+}
+
+/**
+ *
+ * @param {DogiInstance} instance
+ */
+function instanceToStatus(instance) {
+    const {explicitId, outputs: {outputUrls}, cb, env, errors} = instance;
+    return {
+        id: explicitId,
+        env,
+        output: outputUrls,
+        cb,
+        errors
+    }
+}
+
+async function processRequest_old (req, res, {params}) {
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Action = {
+        run: 'run',
+        peek: 'peek',
+        restart: 'restart',
+        abort: 'abort',
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Output = {
+        log: 'log',
+        status: 'status'
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const OutputType = {
+        async: 'async',
+        wait: 'wait',
+        stream: 'stream',
+    }
+
+    /**
+     * @readonly
+     * @enum {string}
+     */
+    const Protocol = {
+        https: 'https',
+        http: 'http',
+        ssh: 'ssh'
+    }
+
+
+
     const {url, protocol} = params;
     const {df, id, bashc, cb} = params;
 

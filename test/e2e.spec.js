@@ -71,7 +71,7 @@ describe('dogi:e2e', function() {
             scope.done();
         })
 
-        it.skip('should include callback response in status for failure', async function() {
+        it('should include callback response in status for failure', async function() {
             this.timeout(hour);
 
             const scope = nock('http://example.com')
@@ -81,10 +81,16 @@ describe('dogi:e2e', function() {
                 })
 
             let res = await request(app)
-                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=status&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .post('/ssh/git@github.com:ovenator/dogi.git')
+                .send({
+                    action: 'run',
+                    output: 'status',
+                    cmd: 'npm run mock-env',
+                    cb: 'http://example.com/test'
+                })
                 .expect(500);
 
-            res.body.cb_response.should.equal('{"callback":"response"}')
+            res.text.should.containEql('{"callback":"response"}')
 
             scope.done();
         })
@@ -108,20 +114,28 @@ describe('dogi:e2e', function() {
             scope.done();
         })
 
-        it.skip('should include callback response in log output', async function() {
+        it('should include callback response in log output', async function() {
             this.timeout(hour);
 
             const scope = nock('http://example.com')
                 .post('/test')
                 .reply(500, {
-                    callback: 'response'
+                    callback: 'responsePayload'
                 })
 
             let res = await request(app)
-                .get('/ssh/git@github.com:ovenator/dogi.git?action=run&output=log&env_foo=bar&cmd=npm run mock-env&cb=http://example.com/test')
+                .post('/ssh/git@github.com:ovenator/dogi.git')
+                .send({
+                    action: 'run',
+                    output: 'log',
+                    output_type: 'wait',
+                    cmd: 'npm run mock-env',
+                    cb: 'http://example.com/test',
+                    env_foo: 'bar'
+                })
                 .expect(500);
 
-            res.body.should.containEql('{"callback":"response"}')
+            res.text.should.match(/responsePayload/);
 
             scope.done();
         })
@@ -213,6 +227,20 @@ describe('dogi:e2e', function() {
                 });
 
             JSON.parse(res.text).should.have.property('foo').which.equals('bar');
+        })
+
+        it('should not hang when error occurs during streaming', async function() {
+            this.timeout(hour);
+
+            let res = await request(app)
+                .post('/https/github.com/ovenator/dogi.git')
+                .send({
+                    action: 'run',
+                    output_type: 'stream',
+                    cmd: 'npm run mock-fail',
+                    output: 'log'
+                });
+
         })
     })
 
@@ -315,4 +343,48 @@ describe('dogi:e2e', function() {
 
         JSON.parse(resultPeek.text).should.have.property('foo').which.equals('3');
     })
+
+    it('should kill the instance when request is aborted', async function () {
+        this.timeout(hour);
+
+        let appRun = request(app)
+            .post('/ssh/git@github.com:ovenator/dogi.git')
+            .send({
+                action: 'run',
+                output: 'status',
+                output_type: 'wait',
+                cmd: 'npm run mock-env',
+                env_foo: 'bar1',
+                file_1: '/app/mock/out/env.json',
+                attach: true
+            })
+            .expect(500, () => {})
+
+        await wait(3000);
+
+        let peekStatusPromise = request(app)
+            .post('/ssh/git@github.com:ovenator/dogi.git')
+            .send({
+                action: 'run',
+                output: 'status',
+                output_type: 'wait',
+                cmd: 'npm run mock-env',
+                env_foo: 'bar2',
+                file_1: '/app/mock/out/env.json'
+            })
+            .expect(500);
+
+        await wait(1000);
+
+        try {
+            await appRun.abort();
+        } catch(e) {
+            console.info(e.message);
+        }
+
+        let peekStatus = await peekStatusPromise;
+        peekStatus.text.should.containEql('Killed by abort');
+
+    })
+
 })

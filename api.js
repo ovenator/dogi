@@ -8,6 +8,7 @@ const docker = require('./docker')
 const {openPromise, toInstanceId, validateFilename, getNamespace} = require('./util');
 
 const simpleGit = require('simple-git');
+const {flushStream} = require("./util");
 const git = simpleGit();
 
 const {processCallback} = require("./callbacks");
@@ -232,15 +233,12 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
 
     async function withoutInstance() {
 
-        await fsp.rmdir(instanceDir, {recursive: true});
-        await fsp.mkdir(instanceDir, {recursive: true});
-        const outputs = await createOutputs(instanceId, containerFilesById);
-
         /**
          * @typedef {Object} DogiInstance
          * @property {string} instanceId - dogi_{namespace}_{repoHash}_{explicitIdHash} used for container, image and file naming
          * @property {string} explicitId - user provided id
          * @property {date} started
+         * @property {Array.<string>} errors
          * @property {Promise.<any>} pendingRestart - this is never resolved, only rejected for subsequent restarts
          *                                            to ensure that only the most recent restart wins
          *                                            the idea is, that on successful restart instance object will be recreated
@@ -259,20 +257,26 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
         const newInstance = instancesById[instanceId] = {
             instanceId,
             explicitId,
+            errors: [],
             started: Date.now(),
             url: urlWithProto,
             runHandleCreated: openPromise(),
             instanceFinished: openPromise(),
             isBeingDestroyed: false,
             delayed: null,
-            outputs,
             env
         };
+
+        await fsp.rmdir(instanceDir, {recursive: true});
+        await fsp.mkdir(instanceDir, {recursive: true});
+
+        newInstance.outputs = await createOutputs(instanceId, containerFilesById);
 
         newInstance.abort = async function() {
             if (newInstance.isBeingDestroyed) {
                 return this.instanceFinished;
             }
+            newInstance.errors.push('Killed by abort');
             newInstance.isBeingDestroyed = true;
             const runHandle = await this.runHandleCreated
             await runHandle.abort();
@@ -283,10 +287,12 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
             const logFilename = newInstance.outputs.outputFilesById['log'];
             const buildLog = fs.createWriteStream(logFilename);
             await exports.build({sshUrl: urlWithProto, dockerfile, instanceId, output: buildLog});
+            // await flushStream(buildLog);
 
             const runLog = fs.createWriteStream(logFilename, {flags: 'a'});
 
             const runHandle = await exports.run({instanceId, mounts: newInstance.outputs.mounts, cmd, bashc, env, output: runLog});
+            // await flushStream(runLog);
 
             newInstance.runHandleCreated.resolve(runHandle);
             const result = await runHandle.containerFinished;
@@ -313,6 +319,7 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
 
         delayed
             .catch(e => {
+                newInstance.errors.push(e.message);
                 console.error(e);
             })
             .finally(() => {

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const fs = require('fs');
+const {flushStream} = require("./util");
 
 /**
  * @param {DogiInstance} instance
@@ -9,7 +10,8 @@ const fs = require('fs');
 exports.processCallback = async function processCallback(instance, callbackUrl) {
     const logFilename = instance.outputs.outputFilesById['log'];
     const requestLog = fs.createWriteStream(logFilename, {flags: 'a'});
-    requestLog.write(`Calling POST ${callbackUrl}`);
+    requestLog.write(`[dogi] Calling POST ${callbackUrl}`);
+    requestLog.write('\n');
 
     let result = await axios.post(callbackUrl, {
         id: instance.explicitId,
@@ -35,8 +37,12 @@ exports.processCallback = async function processCallback(instance, callbackUrl) 
         response: {status, data}
     };
 
-    requestLog.write(JSON.stringify(cbResult));
+    requestLog.write('[dogi] Request finished \n');
+    requestLog.write(JSON.stringify(cbResult, null, 2));
+    requestLog.write('\n');
     requestLog.close();
+
+    await flushStream(requestLog);
 
     return cbResult;
 }

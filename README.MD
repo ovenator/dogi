@@ -1,33 +1,33 @@
 # Dogi
 
-Dogi makes it possible to run code in any git repo via HTTP without deployment or special API in your code.   
-Out of the box, you will get an HTTP stream of your build and run logs and HTTP code mapped your script exit code (0 - 200, non-zero - 500).   
+Dogi allows you to do `docker build && docker run` on your git repo by http call like this 
+`https://dogi.ove.me/https/github.com/ovenator-scrapy-demo.git?action=run&bashc=pipenv run scrapy`
 
-You can also reference arbitrary files inside your container and have it streamed to you in real time just like `tail -f`.   
-Imagine like scraping a website and have 3 different files, one with the scraped data, second with list of failed urls and third with scrapy logs for debugging.
+[comment]: <> (## Demo)
 
-Dogi also supports HTTP callbacks to notify your app via POST with the result of execution. You can, for example, use free cron service like https://cron-job.org to call your code and notify you about execution errors, while your app will just receive the resulting data on success.
+[comment]: <> (The following will checkout the repository, build the Dockerfile, run the command and stream the selected file to you in real time. Optional signature prevents clients from tampering the parameters)
 
-### Demo
-The following will checkout the repository, build the Dockerfile, run the command and stream the selected file to you in real time. Optional signature prevents clients from tampering the parameters
+[comment]: <> (#### Get scraped data)
 
-#### Get scraped data
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=cab976410e8cb7b2dd85eee67c43d17e6d314c0e
+[comment]: <> (https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=cab976410e8cb7b2dd85eee67c43d17e6d314c0e)
 
-#### Get logs
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=log&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=fc18f584ca659bdff8033111677365e8c23d8b34
+[comment]: <> (#### Get logs)
 
-#### Get HTTP status and links to output files
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=status&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=3d72af23cee53efe1ba4bd60e48fd2e8858e1bd0
+[comment]: <> (https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=log&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=fc18f584ca659bdff8033111677365e8c23d8b34)
 
-#### Pass ENV variables
-Note that if you want to run multiple instances in parallel, you have to supply an id param. If you call `action=run` multiple times on the same id, it will just attach to the previous run, not taking into account the changes in parameters. If you want to change the parameters, use `action=restart`
+[comment]: <> (#### Get HTTP status and links to output files)
 
-https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&env_MAX_PAGES=1&sig=e5e4bb1389606c772e5f1cd760a8574ebadb0e05
+[comment]: <> (https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=all_pages&action=run&output=status&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&sig=3d72af23cee53efe1ba4bd60e48fd2e8858e1bd0)
+
+[comment]: <> (#### Pass ENV variables)
+
+[comment]: <> (Note that if you want to run multiple instances in parallel, you have to supply an id param. If you call `action=run` multiple times on the same id, it will just attach to the previous run, not taking into account the changes in parameters. If you want to change the parameters, use `action=restart`)
+
+[comment]: <> (https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&action=run&output=file_data&file_data=/app/data.jsonl&bashc=pipenv%20run%20scrapy&env_MAX_PAGES=1&sig=e5e4bb1389606c772e5f1cd760a8574ebadb0e05)
 
 
 
-### Installation
+## Installation
 ```shell
  docker run -ti 
  -p 3001:3001 \
@@ -53,32 +53,66 @@ https://dogi.ove.me/https/github.com/ovenator/dogi-scrapy-demo.git?id=max_pages&
 | NAMESPACE                 |    **default** | When running multiple instances of Dogi on single host, this is used to avoid container and file name collisions |
 
 
-### GET /:protocol/:repo
-#### Params
+## GET/POST /:protocol/:repo
+### Path Params
 
-| Name                      | Description      |
-| :------------------------ | :--------------- |
-|   protocol                | ssh, http, https |
+#### protocol
+* **ssh**
+* **http**
+* **https**
 
-#### Query params
+#### repo
+Examples:
+* `/https/github.com/ovenator/dogi-scrapy-demo.git`
+* `/ssh/git@github.com:ovenator/dogi-scrapy-demo.git`
 
-| Name                      | Default value  | Description   |
-| :------------------------ | :------------- | :------------ |
-|   sig                     |                | Must the the last param. Required unless the BYPASS_SIGNATURES env var is set to true. |
-|   output                  |   **log**      | The selected will be tailed to the http reponse. <br/> file_* - tail the selected file inside container Ex. `output=file_myFile` <br/> log - tail the container build and run logs subsequently <br/> status - will hang until the task is finished, then returns 200 or 500 depending if the task succeeded, response will contain links to download output files  |
-|   action                  |   **peek**     | run - run the task, response will be tail of the selected output <br/> peek - just tail the selected output <br/> restart - abort and run subsequently <br/> abort - kill the task |
-|   file_*                  |                | Reference file inside container. Ex: `?file_myFile=/app/myFile.json`   |
-|   env_*                   |                | Pass environment variable to container. Ex: `?env_FOO=bar` will run container with `FOO` env variable |
-|   id                      |                | To be able to reference multiple concurrent runs based on the same git repo |
-|   cb                      |                | When execution is finished, this url will be POST called with json payload similar to 'status' output. If the callback returns and error, the entire task will behave as failed |
-|   cmd                     |                | Will be passed as cmd command to the container split by spaces. Ex. `?cmd=node run start` will be passed to the container as `CMD [node, run, start`]`  |
-|   bashc                   |                | Alias for `CMD [bash, -c, command]`. Ex. `?bashc=command`  |
+### Params
+Params can be provided as GET query params or POST json body params
+
+#### action
+* **peek** *(default)* - just attach to the running task or show result of finished task, idempotent
+* **run** - build and run the container, if instance with same identifier is already running, this will act as `peek`. If you want to change parameters of running task use `restart`
+* **abort** - force remove the container
+* **restart** - subsequent abort and restart, or run when not running
+
+#### attach
+If set to **true**, closing the http connection will act as `abort` request
 
 
-### GET /collect
+#### cmd
+Will be passed as cmd command to the container split by spaces. Ex. `cmd=node run start` will be passed to the container as `CMD [node, run, start]`
+
+#### bashc
+Alias for `CMD [bash, -c, command]`. Ex. `?bashc=command`
+
+#### id
+Instance id, allows you to run multiple instances of the same repository.
+
+#### output
+ * **log** *(default)* - combined docker build, run and other logs related to exectuion
+ * **status** - json containing information about task
+ * **file_*** - file inside container to be used as output, defined as below
+
+#### file_{id}
+Arbitrary file path inside container. Id is arbitrary identifier Ex. `file_data=/app/data.json`
+
+#### env_{param}
+Arbitrary env param, will be passed to the container run command. Ex. `env_LOG_LEVEL=debug`
+
+#### output_type
+ * **stream** *(default)* - selected output will be tail-ed to the http response
+ * **wait** - hangs until the process is finished, then shows the result. Response status will reflect the result (200 or 500)
+ * **async** - shows output that is currently available, not waiting
+
+#### cb
+When execution is finished, this url will be POST called with json payload similar to 'status' output. If the callback returns and error, the entire task will behave as failed
+
+#### sig
+Optional url signature to prevent url tampering. Only required when `BYPASS_SIGNATURES` is not set, must be the last param
+
+## GET /collect
 Returns output from all instances and repos with given name joined together, can be useful for aggregate view of error logs
-#### Query params
+### Query params
 
-| Name                      | Default value  | Description   |
-| :------------------------ | :------------- | :------------ |
-|   output                  |                | Name of output to be collected. Ex. `output=file_errors`  |
+#### output
+Name of output to be collected. Ex. `output=file_errors`
