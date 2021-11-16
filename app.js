@@ -367,6 +367,11 @@ app.get('/collect', wrap(async (req, res) => {
     return;
 }))
 
+app.get('/outputs', wrap(async (req, res) => {
+    const outputs = await api.getOutputs();
+     res.json(outputs);
+}))
+
 function validate(param, allowed, actual) {
     if (!allowed.includes(actual)) {
         throw new Error(`Invalid value '${actual}' of '${param}', allowed values are ${JSON.stringify(allowed)}`)

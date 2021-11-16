@@ -331,6 +331,50 @@ exports.lifecycle = async ({url, urlProto, explicitId, dockerfile, action, cmd, 
     }
 }
 
+const {reverse, set} = require('lodash');
+const {getOutputUrl} = require('./outputs');
+
+/**
+ *
+ * @returns {Promise<Outputs>}
+ */
+exports.getOutputs = async () => {
+    const baseDir = getInternalSharedDir();
+    const files = await new Promise((res, rej) => {
+        glob(path.join(baseDir, `dogi_${getNamespace()}_*/dogi.out.*`), (err, files) => {
+            if (err) {
+                return rej(err);
+            }
+            res(files);
+        })
+    });
+
+    const byInstanceId = {};
+
+    files.forEach(file => {
+        const [filename, instanceId] = reverse(file.split('/'));
+        const [outputId] = reverse(filename.split('.'));
+        set(byInstanceId, [instanceId, 'outputs', outputId, 'url'], getOutputUrl({instanceId, outputId}));
+    });
+
+    /**
+     * @typedef {Object} InstanceOutput
+     * @property {String} id instance id
+     * @property {{url: String}[]} outputs public urls of outputs
+     */
+
+    /**
+     * @typedef {Object} Outputs
+     * @property {InstanceOutput} outputs
+     */
+
+    const outputs = Object.keys(byInstanceId).map(id => ({id, ...byInstanceId[id]}))
+    
+    return {
+        outputs
+    }
+};
+
 exports.collectOutputs = async ({output, stream}) => {
     validateFilename(output);
     const baseDir = getInternalSharedDir();

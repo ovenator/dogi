@@ -303,6 +303,27 @@ describe('dogi:e2e', function() {
         bars.should.containDeep(['bar1', 'bar2', 'bar3']);
     })
 
+    it('should get outputs', async function() {
+        this.timeout(hour);
+
+        let run1 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=1&action=run&output=file_1&env_foo=bar1&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let run2 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=2&action=run&output=file_1&env_foo=bar2&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let run3 = await request(app)
+            .get('/ssh/git@github.com:ovenator/dogi.git?id=3&action=run&output=file_1&env_foo=bar3&cmd=npm run mock-env&file_1=/app/mock/out/env.json');
+
+        let res = await request(app)
+            .get('/outputs');
+
+        const {outputs} = res.body;
+        outputs.should.have.length(3);
+        outputs[0].should.have.ownProperty('id');
+        outputs[0].should.have.propertyByPath('outputs', 'log');
+    })
+
 
     it('should only finish last restart', async function() {
         this.timeout(hour);

@@ -65,12 +65,12 @@ exports.createOutputs = async function createOutputs(instanceId, fileOutputs) {
     const advertisedUrl = process.env['ADVERTISED_URL'] || '';
 
     const outputUrls = {
-        log:  `${advertisedUrl}/output/${instanceId}/log`
+        log:  exports.getOutputUrl({instanceId, outputId: 'log'})
     }
 
     fileObjects.forEach(fileObj => {
         const {id} = fileObj;
-        outputUrls[id] = `${advertisedUrl}/output/${instanceId}/${id}`;
+        outputUrls[id] = exports.getOutputUrl({instanceId, outputId: id});
     })
 
     /**
@@ -82,4 +82,9 @@ exports.createOutputs = async function createOutputs(instanceId, fileOutputs) {
      */
 
     return {outputFilesById, mounts, outputUrls, fileObjects}
+}
+
+exports.getOutputUrl = ({instanceId, outputId}) => {
+    const advertisedUrl = process.env['ADVERTISED_URL'] || '';
+    return `${advertisedUrl}/output/${instanceId}/${outputId}`
 }
