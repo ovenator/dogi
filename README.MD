@@ -29,7 +29,7 @@ Dogi allows you to do `docker build && docker run` on your git repo by http call
 
 ## Installation
 ```shell
- docker run -ti 
+ docker run -ti \
  -p 3001:3001 \
  -v /tmp:/tmp \
  -v ~/.ssh/id_rsa:/root/.ssh/id_rsa:ro \

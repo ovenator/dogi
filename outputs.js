@@ -76,7 +76,7 @@ exports.createOutputs = async function createOutputs(instanceId, fileOutputs) {
     /**
      * @typedef Outputs
      * @property {Object} outputFilesById
-     * @property {Object} outputUrls
+     * @property {Object.<String, String>} outputUrls [outputId] -> output url
      * @property {Array.<FileMount>} mounts
      * @property {Array.<FileOutput>} fileObjects
      */

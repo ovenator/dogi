@@ -174,7 +174,8 @@ async function processRequest (req, res, {params: _params}) {
             if (outputId === 'status') {
                 res
                     .status(status)
-                    .json(instanceToStatus(instance));
+                    .json(instanceToStatus(instance))
+                    .end();
                 return;
             }
             // await new Promise(res => setTimeout(res, 1000));
@@ -217,8 +218,17 @@ async function processRequest (req, res, {params: _params}) {
 }
 
 /**
+ * @typedef StatusOutput
+ * @property {String} id
+ * @property {Object.<String, Object.<String, String>>} env
+ * @property {Outputs.outputUrls} output
+ * @property {Array.<string>} errors
+ */
+
+/**
  *
  * @param {DogiInstance} instance
+ * @returns {StatusOutput}
  */
 function instanceToStatus(instance) {
     const {explicitId, outputs: {outputUrls}, cb, env, errors} = instance;
@@ -229,131 +239,6 @@ function instanceToStatus(instance) {
         cb,
         errors
     }
-}
-
-async function processRequest_old (req, res, {params}) {
-
-    /**
-     * @readonly
-     * @enum {string}
-     */
-    const Action = {
-        run: 'run',
-        peek: 'peek',
-        restart: 'restart',
-        abort: 'abort',
-    }
-
-    /**
-     * @readonly
-     * @enum {string}
-     */
-    const Output = {
-        log: 'log',
-        status: 'status'
-    }
-
-    /**
-     * @readonly
-     * @enum {string}
-     */
-    const OutputType = {
-        async: 'async',
-        wait: 'wait',
-        stream: 'stream',
-    }
-
-    /**
-     * @readonly
-     * @enum {string}
-     */
-    const Protocol = {
-        https: 'https',
-        http: 'http',
-        ssh: 'ssh'
-    }
-
-
-
-    const {url, protocol} = params;
-    const {df, id, bashc, cb} = params;
-
-    const dockerfile = df || 'Dockerfile';
-
-    if(!verify(req.url)) {
-        res.send('Signature verification failed.');
-        return;
-    }
-
-    const queryAction = params.action || 'peek';
-    const queryOutput = params.output || 'log';
-
-    let queryCmd = null;
-    if (params.cmd) {
-        queryCmd = params.cmd.split(' ');
-    }
-
-    validate('protocol', ['ssh', 'http', 'https'], protocol);
-    validate('action', ['peek', 'run', 'abort', 'restart'], queryAction)
-    // validate('output', ['file', 'log', 'status'], queryOutput)
-
-    debug('starting lifecycle');
-    const result = await api.lifecycle({
-        explicitId: id,
-        urlProto: protocol,
-        url,
-        dockerfile,
-        action: queryAction,
-        cmd: queryCmd,
-        bashc,
-        env: extractPrefixed('env', params),
-        callbackUrl: cb,
-        containerFiles: extractPrefixed('file', params, {keepPrefix: true}),
-        outputId: queryOutput
-    });
-
-    const {delayed} = result;
-    debug('finished lifecycle')
-
-    if (queryOutput === 'status') {
-        await delayed;
-        res.json({output: result.outputs.outputUrls, cb: result.cb});
-        return;
-    }
-
-    res.setHeader("Connection", "Keep-Alive");
-    res.setHeader("Keep-Alive", "timeout=86400, max=1000");
-    res.setHeader("Content-Type", "text/plain");
-    const logStream = ts.createReadStream(result.outputs.outputFilesById[queryOutput])
-    const firstEofPromise = new Promise(res => logStream.on('eof', () => res()));
-    logStream.pipe(res);
-
-    // const logStream = mergeStream(
-    //     ts.createReadStream(output['buildLog']),
-    //     ts.createReadStream(output['runLog']),
-    // )
-
-    // if (debug.enabled) {
-    //     // const events = ['error', 'eof', 'end', 'move', 'truncate', 'replace'];
-    //     const events = ['close', 'end', 'error', 'pause', 'readable', 'resume'];
-    //     events.forEach(en => {
-    //         logStream.on(en, (e) => {
-    //             debug('logStream emitted', en, e);
-    //         })
-    //     })
-    // }
-
-    if (!delayed) {
-        debug('delayed is not set');
-    }
-
-    await delayed;
-    debug('finished delayed');
-    await firstEofPromise;
-    debug('finished log file');
-
-    logStream.end();
-    res.end()
 }
 
 app.get('/jobs', wrap(async (req, res) => {
@@ -372,11 +257,6 @@ app.get('/outputs', wrap(async (req, res) => {
      res.json(outputs);
 }))
 
-function validate(param, allowed, actual) {
-    if (!allowed.includes(actual)) {
-        throw new Error(`Invalid value '${actual}' of '${param}', allowed values are ${JSON.stringify(allowed)}`)
-    }
-}
 
 function wrap(fn) {
     return async (req, res, next) => {
